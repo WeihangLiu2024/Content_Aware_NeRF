@@ -6,13 +6,33 @@
 #echo "Y" | python scripts/colmap2nerf.py --images ./data/mipnerf360/stump/images/ --run_colmap # if use images
 
 # =========================================================== fp ========================================================
-python main.py data/nerf_synthetic/drums --workspace workspace/fp/nerf_synthetic/drums_log19 -O --data_format nerf
-python main.py data/nerf_synthetic/drums --workspace workspace/fp/nerf_synthetic/drums_log15 -O --data_format nerf --log2_hashmap_size 15
-python main.py data/nerf_synthetic/drums --workspace workspace/fp/nerf_synthetic/drums_log12 -O --data_format nerf --log2_hashmap_size 12
+#python main.py data/nerf_synthetic/drums --workspace workspace/fp/nerf_synthetic/drums_log19 -O --data_format nerf
+#python main.py data/nerf_synthetic/drums --workspace workspace/fp/nerf_synthetic/drums_log15 -O --data_format nerf --log2_hashmap_size 15
+#python main.py data/nerf_synthetic/drums --workspace workspace/fp/nerf_synthetic/drums_log12 -O --data_format nerf --log2_hashmap_size 12
+#
+#python main.py data/nerf_blender/teamug --workspace workspace/fp/nerf_blender/teamug_log19 -O --data_format nerf --offset 0 0 -1
+#python main.py data/nerf_blender/teamug --workspace workspace/fp/nerf_blender/teamug_log15 -O --data_format nerf --offset 0 0 -1 --log2_hashmap_size 15
+#python main.py data/nerf_blender/teamug --workspace workspace/fp/nerf_blender/teamug_log12 -O --data_format nerf --offset 0 0 -1 --log2_hashmap_size 12
 
-python main.py data/nerf_blender/teamug --workspace workspace/fp/nerf_blender/teamug_log19 -O --data_format nerf --offset 0 0 -1
-python main.py data/nerf_blender/teamug --workspace workspace/fp/nerf_blender/teamug_log15 -O --data_format nerf --offset 0 0 -1 --log2_hashmap_size 15
-python main.py data/nerf_blender/teamug --workspace workspace/fp/nerf_blender/teamug_log12 -O --data_format nerf --offset 0 0 -1 --log2_hashmap_size 12
+# ====================================================== scalable hash table ============================================
+python main.py data/nerf_synthetic/chair     --workspace workspace/CA_hash/nerf_synthetic/chair     -O --data_format nerf --update_hash 0
+python main.py data/nerf_synthetic/drums     --workspace workspace/CA_hash/nerf_synthetic/drums     -O --data_format nerf
+python main.py data/nerf_synthetic/ficus     --workspace workspace/CA_hash/nerf_synthetic/ficus     -O --data_format nerf
+python main.py data/nerf_synthetic/hotdog    --workspace workspace/CA_hash/nerf_synthetic/hotdog    -O --data_format nerf --selfbound --bound 1.3
+python main.py data/nerf_synthetic/lego      --workspace workspace/CA_hash/nerf_synthetic/lego      -O --data_format nerf
+python main.py data/nerf_synthetic/materials --workspace workspace/CA_hash/nerf_synthetic/materials -O --data_format nerf
+python main.py data/nerf_synthetic/mic       --workspace workspace/CA_hash/nerf_synthetic/mic       -O --data_format nerf
+python main.py data/nerf_synthetic/ship      --workspace workspace/CA_hash/nerf_synthetic/ship      -O --data_format nerf --selfbound --bound 1.3
+
+#python main.py data/mipnerf360/bicycle      --workspace workspace/CA_hash/nerf_synthetic/chair    -O --data_format nerf
+#python main.py data/mipnerf360/bonsai       --workspace workspace/CA_hash/nerf_synthetic/drums    -O --data_format nerf
+#python main.py data/mipnerf360/counter      --workspace workspace/CA_hash/nerf_synthetic/ficus    -O --data_format nerf
+#python main.py data/mipnerf360/flowers      --workspace workspace/CA_hash/nerf_synthetic/hotdog   -O --data_format nerf --selfbound --bound 1.3
+#python main.py data/mipnerf360/garden       --workspace workspace/CA_hash/nerf_synthetic/lego     -O --data_format nerf
+#python main.py data/mipnerf360/kitchen      --workspace workspace/CA_hash/nerf_synthetic/matrials -O --data_format nerf
+#python main.py data/mipnerf360/room         --workspace workspace/CA_hash/nerf_synthetic/mic      -O --data_format nerf
+#python main.py data/mipnerf360/stump        --workspace workspace/CA_hash/nerf_synthetic/ship     -O --data_format nerf --selfbound --bound 1.3
+#python main.py data/mipnerf360/treehill     --workspace workspace/CA_hash/nerf_synthetic/ship     -O --data_format nerf
 
 # =========================================================== MGL =======================================================
 ## synthetic NeRF

@@ -85,16 +85,11 @@ if __name__ == '__main__':
             trainer.metrics = [PSNRMeter(),]
             trainer.train(train_loader, valid_loader, max_epoch)
 
-            # save hash grad as reference
-            # numpy_hash = [tensor.numpy() for tensor in trainer.hash_grad]
-            # numpy_hash = np.array(numpy_hash)
-            # np.save(f'{trainer.log_path}/hash_grad.npy', numpy_hash)
-
             loss_fp = trainer.evaluate_on_trainset(train_loader)
             # last validation
             trainer.metrics = [PSNRMeter(), SSIMMeter(), LPIPSMeter(device=device)]
             ################################
-            # loss_val_fp = trainer.evaluate(valid_loader)
+            loss_val_fp = trainer.evaluate(valid_loader)
 
             # also test
             test_loader = NeRFDataset(opt, device=device, type='test').dataloader()

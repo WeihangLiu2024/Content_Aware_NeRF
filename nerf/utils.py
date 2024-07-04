@@ -416,8 +416,11 @@ class Trainer(object):
         # classify hash parameters
         for name, param in self.model.encoder.named_parameters():
             self.hash_table = param
-        # self.hash_grad = torch.zeros(opt.iters, self.hash_table.shape[0], self.hash_table.shape[1])
+        # record the gradients to adjust the hash table size
         self.hash_grad = []
+        # self.hash_grad = torch.zeros(opt.iters, self.hash_table.shape[0], self.hash_table.shape[1])
+        if self.opt.save_grad:
+            self.hash_grad = []
 
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
@@ -527,13 +530,17 @@ class Trainer(object):
         update_proposal = self.global_step <= 3000 or self.global_step % 5 == 0
         
         outputs = self.model.render(rays_o, rays_d, index=index, bg_color=bg_color, perturb=True,
-                                    cam_near_far=cam_near_far, shading=shading, update_proposal=update_proposal)
+                                    cam_near_far=cam_near_far, shading=shading, update_proposal=update_proposal, global_step=self.global_step)
 
         # MSE loss
         pred_rgb = outputs['image']
         loss = self.criterion(pred_rgb, gt_rgb).mean(-1) # [N, 3] --> [N]
     
         loss = loss.mean()
+
+        # content-aware reg
+        alpha = outputs['alpha_mean']
+        loss = loss + 1e-6 * alpha
 
         # extra loss
         if 'proposal_loss' in outputs and self.opt.lambda_proposal > 0:
@@ -645,16 +652,32 @@ class Trainer(object):
         for epoch in range(self.epoch + 1, max_epochs + 1):
             self.epoch = epoch
 
-            self.train_one_epoch(train_loader, epoch_index=epoch-1)
+            self.train_one_epoch(train_loader, epoch_index=epoch)
 
+            # ========== hash table operation ==========
             # save hash grad as reference
-            if (epoch-1) % 10 == 0:
+            if (epoch + 1) % self.opt.hash_interval == 0:
                 tensor_hash = torch.stack(self.hash_grad)
-                tensor_hash = np.array(tensor_hash)
-                io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
-                           {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.sum(abs(tensor_hash), axis=0)} )
+                tensor_hash_sum = torch.sum(torch.abs(tensor_hash), dim=0)
+                if self.opt.save_grad:
+                    tensor_hash = np.array(tensor_hash.cpu())
+                    io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
+                               {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.array(tensor_hash_sum.cpu())} )
+                if epoch < self.opt.update_hash:
+                    self.model.adjust_hash(tensor_hash_sum)
 
-            self.hash_grad = []
+                    # re-initialize training status
+                    for name, param in self.model.encoder.named_parameters():
+                        self.hash_table = param
+
+                    lr = self.optimizer.param_groups[0]['lr']
+                    self.optimizer = optim.Adam(self.model.get_params(lr), eps=1e-15)
+                    self.lr_scheduler.optimizer = self.optimizer
+                    print("Update hash table size:", self.hash_table.shape[0])
+
+                # self.optimizer.param_groups[0]['params'] = self.model.encoder.embeddings
+
+                self.hash_grad = []
 
             if (self.epoch % self.save_interval == 0 or self.epoch == max_epochs) and self.workspace is not None and self.local_rank == 0:
                 self.save_checkpoint(full=True, best=False)
@@ -883,10 +906,10 @@ class Trainer(object):
 
             self.post_train_step() # for TV loss...
 
-            # record hash grad every 50 epoch
+            # record hash grad every xxx epoch
             # self.hash_grad.append(self.hash_table.grad.detach().clone())
-            if epoch_index % 10 == 0:
-                self.hash_grad.append(self.hash_table.grad.cpu())
+            if (epoch_index+1) % self.opt.hash_interval == 0:
+                self.hash_grad.append(self.hash_table.grad)
 
             self.scaler.step(self.optimizer)
             self.scaler.update()

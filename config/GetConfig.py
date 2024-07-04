@@ -45,7 +45,6 @@ def get_config():
     parser.add_argument('--T_thresh', type=float, default=1e-4, help="minimum transmittance to continue ray marching")
 
     ### training options
-    parser.add_argument('--log2_hashmap_size', type=int, default=19, help="max hash table size for each level")
     parser.add_argument('--iters', type=int, default=30000, help="training iters")
     parser.add_argument('--lr', type=float, default=1e-2, help="initial learning rate")
     parser.add_argument('--cuda_ray', action='store_true', help="use CUDA raymarching instead of pytorch")
@@ -117,6 +116,12 @@ def get_config():
     parser.add_argument('--T1', action='store_true', help="only Task 1 QAT")
     parser.add_argument('--T2', action='store_true', help="only Task 2 bit-width learning")
     parser.add_argument('--bit_set', type=float, nargs=15, help="only valid when opt.T1 = True")
+
+    ### hash table size scalable settings
+    parser.add_argument('--log2_hashmap_size', type=int, default=19, help="max hash table size for each level")  # initial hash table size
+    parser.add_argument('--save_grad', action='store_true', help="save gradients for hash table every 10 epoches")
+    parser.add_argument('--update_hash', type=int, default=100, help="update hash table size at the initial xxx epoches")
+    parser.add_argument('--hash_interval', type=int, default=10, help="update every xxx epoches")
 
     opt = parser.parse_args()
 

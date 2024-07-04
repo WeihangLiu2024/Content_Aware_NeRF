@@ -74,6 +74,7 @@ class _grid_encode(Function):
     def backward(ctx, grad):
 
         inputs, embeddings, offsets, dy_dx = ctx.saved_tensors
+        # print(grad.shape)
         B, D, C, L, S, H, gridtype, interpolation, max_level = ctx.dims
         align_corners = ctx.align_corners
 
@@ -105,7 +106,7 @@ class GridEncoder(nn.Module):
                  interpolation='linear'):
         super().__init__()
 
-        # the finest resolution desired at the last level, if provided, overridee per_level_scale
+        # the finest resolution desired at the last level, if provided, override per_level_scale
         if desired_resolution is not None:
             per_level_scale = np.exp2(np.log2(desired_resolution / base_resolution) / (num_levels - 1))
 
@@ -122,19 +123,28 @@ class GridEncoder(nn.Module):
         self.interp_id = _interp_to_id[interpolation] # "linear" or "smoothstep"
         self.align_corners = align_corners
 
+        # backup for size scalability
+        self.backup = []
+
         # allocate parameters
         offsets = []
+        # max_params_per_level = []
         offset = 0
         self.max_params = 2 ** log2_hashmap_size
         for i in range(num_levels):
             resolution = int(np.ceil(base_resolution * per_level_scale ** i))
-            params_in_level = min(self.max_params, (resolution) ** input_dim) # limit max number
+            max_params_in_level = resolution ** input_dim
+            params_in_level = min(self.max_params, max_params_in_level) # limit max number
             params_in_level = int(np.ceil(params_in_level / 8) * 8) # make divisible
+            # max_params_in_level = int(np.ceil(max_params_in_level / 8) * 8)
+            # max_params_per_level.append(max_params_in_level)
             offsets.append(offset)
             offset += params_in_level
         offsets.append(offset)
         offsets = torch.from_numpy(np.array(offsets, dtype=np.int32))
+        # max_params_per_level = torch.from_numpy(np.array(max_params_per_level, dtype=np.int32))
         self.register_buffer('offsets', offsets)
+        # self.register_buffer('max_params_per_level', max_params_per_level)
         
         self.n_params = offsets[-1] * level_dim
 
@@ -212,3 +222,76 @@ class GridEncoder(nn.Module):
             raise ValueError('grad is None, should be called after loss.backward() and before optimizer.step()!')
 
         _backend.grad_weight_decay(self.embeddings, self.embeddings.grad, self.offsets, weight, B, C, L)
+
+    def size_up(self):
+        # scale up the hash table size
+        # if self.backup exist, use it as initializations of newly added params
+        std = 1e-4
+        offsets = []
+        offset = 0
+        self.log2_hashmap_size = self.log2_hashmap_size + 1
+        self.max_params = 2 ** self.log2_hashmap_size
+        for i in range(self.num_levels):
+            resolution = int(np.ceil(self.base_resolution * self.per_level_scale ** i))
+            max_params_in_level = resolution ** self.input_dim
+            params_in_level = min(self.max_params, max_params_in_level) # limit max number
+            params_in_level = int(np.ceil(params_in_level / 8) * 8) # make divisible
+            offsets.append(offset)
+            offset += params_in_level
+        offsets.append(offset)
+
+        embedding = self.embeddings.data
+        for idx in range(len(offsets)):
+            if offsets[idx] == self.offsets[idx]:
+                continue
+            new_size = offsets[idx] - self.offsets[idx]
+
+            if len(self.backup):
+                new_added = self.backup[idx]
+            else:
+                new_added = (torch.rand([new_size, self.level_dim], device='cuda') * 2 - 1) * std
+
+            embedding = torch.cat((
+                embedding[:self.offsets[idx],:],
+                new_added,
+                embedding[self.offsets[idx]:, :],
+            ),dim=0)
+
+            self.offsets[idx:] = self.offsets[idx:] + new_size
+        
+        self.embeddings = nn.Parameter(embedding)
+
+
+    def size_down(self):
+        # scale down the hash table size, the deleted part are saved as backup
+        offsets = []
+        offset = 0
+        self.log2_hashmap_size = self.log2_hashmap_size - 1
+        self.max_params = 2 ** self.log2_hashmap_size
+        for i in range(self.num_levels):
+            resolution = int(np.ceil(self.base_resolution * self.per_level_scale ** i))
+            max_params_in_level = resolution ** self.input_dim
+            params_in_level = min(self.max_params, max_params_in_level) # limit max number
+            params_in_level = int(np.ceil(params_in_level / 8) * 8) # make divisible
+            offsets.append(offset)
+            offset += params_in_level
+        offsets.append(offset)
+
+        embedding = self.embeddings.data
+        for idx in range(len(offsets)):
+            new_size = self.offsets[idx] - offsets[idx]
+
+            self.backup.append(self.embeddings[offsets[idx]:self.offsets[idx], :])
+
+            embedding = torch.cat((
+                embedding.data[:offsets[idx],:],
+                embedding.data[self.offsets[idx]:, :],
+            ),dim=0)
+
+            # self.embeddings.data = torch.cat((
+            #     self.embeddings.data[:offsets[idx],:],
+            #     self.embeddings.data[self.offsets[idx]:, :],
+            # ),dim=0)
+
+            self.offsets[idx:] = self.offsets[idx:] - new_size
+        self.embeddings = nn.Parameter(embedding)

@@ -525,9 +525,10 @@ class NeRFRenderer(nn.Module):
 
             dirs = dirs / torch.norm(dirs, dim=-1, keepdim=True)
             with torch.cuda.amp.autocast(enabled=self.opt.fp16):
-                outputs = self(xyzs, dirs, shading=shading)
+                outputs = self(xyzs, dirs, shading=shading, step=kwargs["global_step"])
                 sigmas = outputs['sigma']
                 rgbs = outputs['color']
+
 
             weights, weights_sum, depth, image = raymarching.composite_rays_train(sigmas, rgbs, ts, rays,
                                                                                   self.opt.T_thresh)
@@ -535,6 +536,7 @@ class NeRFRenderer(nn.Module):
             results['num_points'] = xyzs.shape[0]
             results['weights'] = weights
             results['weights_sum'] = weights_sum
+            results['alpha_mean'] = outputs['alpha']
         
         else:
             
