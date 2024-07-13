@@ -686,6 +686,10 @@ class Trainer(object):
                 self.evaluate_one_epoch(valid_loader)
                 self.save_checkpoint(full=False, best=True)
 
+        # clear backup when training is finished.
+        if hasattr(self.model.encoder, 'backup'):
+            del self.model.encoder.backup
+
         end_t = time.time()
 
         self.log(f"[INFO] training takes {(end_t - start_t)/ 60:.6f} minutes.")
@@ -1156,6 +1160,11 @@ class Trainer(object):
             self.model.load_state_dict(checkpoint_dict)
             self.log("[INFO] loaded model.")
             return
+
+        # handle content-aware scalable hash table
+        self.model.encoder.offsets = checkpoint_dict['model']['_orig_mod.encoder.offsets']
+        self.model.encoder.n_params = self.model.encoder.offsets[-1] * self.model.encoder.level_dim
+        self.model.encoder.embeddings = nn.Parameter(checkpoint_dict['model']['_orig_mod.encoder.embeddings'])
 
         missing_keys, unexpected_keys = self.model.load_state_dict(checkpoint_dict['model'], strict=False)
         self.log("[INFO] loaded model.")

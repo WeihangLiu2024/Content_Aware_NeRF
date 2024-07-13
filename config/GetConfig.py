@@ -119,9 +119,9 @@ def get_config():
 
     ### hash table size scalable settings
     parser.add_argument('--log2_hashmap_size', type=int, default=19, help="max hash table size for each level")  # initial hash table size
-    parser.add_argument('--save_grad', action='store_true', help="save gradients for hash table every 10 epoches")
     parser.add_argument('--update_hash', type=int, default=100, help="update hash table size at the initial xxx epoches")
     parser.add_argument('--hash_interval', type=int, default=10, help="update every xxx epoches")
+    parser.add_argument('--save_grad', action='store_true', help="save gradients locally for hash table every <hash_interval> epoches")
 
     opt = parser.parse_args()
 

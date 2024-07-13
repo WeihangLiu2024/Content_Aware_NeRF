@@ -408,10 +408,23 @@ class QcolorNet(nn.Module):
         # save data for MATLAB
         # sio.savemat(f'./quan_res/{self.case_num}color_in.mat', {'color_in': d.data.cpu().detach().numpy()})
 
-        for l in range(len(self.Qcolor_net)):  # 5 layerss
+        d = self.Qcolor_net[0].calibration(d)
+        # uncertainty calculation
+        alpha = d[:, 0].unsqueeze(dim=1)  # uncertainty
+        d_res = d[:, 1:]
+        d = d_res
+        alpha = torch.sigmoid(alpha)
+        complex_mask = (alpha >= 0.5).squeeze()
+        d = d[complex_mask, :]
+        for l in range(1, len(self.Qcolor_net)-1):  # 5 layerss
+            if len(d) == 0:
+                break
             d = self.Qcolor_net[l].calibration(d)
-            # save data for MATLAB
-            # sio.savemat(f'./quan_res/{self.case_num}color_{l}.mat', {f'color_{l}': d.data.cpu().detach().numpy()})
+        d_res[complex_mask] = d
+        d = self.Qcolor_net[-1].calibration(d_res)
+
+        # save data for MATLAB
+        # sio.savemat(f'./quan_res/{self.case_num}color_{l}.mat', {f'color_{l}': d.data.cpu().detach().numpy()})
         rgb = self.Qcolor_act.calibration(d)
 
         # save data for MATLAB
@@ -422,8 +435,20 @@ class QcolorNet(nn.Module):
         return rgb
 
     def forward(self, d):
-        for l in range(len(self.Qcolor_net)):
+        d = self.Qcolor_net[0](d)
+        alpha = d[:, 0].unsqueeze(dim=1)  # uncertainty
+        d_res = d[:, 1:]
+        d = d_res
+        alpha = torch.sigmoid(alpha)
+
+        complex_mask = (alpha >= 0.5).squeeze()  # pre-defined threshold, this is a conservative value
+        # complex point processing
+        d = d[complex_mask, :]
+        for l in range(1, len(self.color_net) - 1):
             d = self.Qcolor_net[l](d)
+        d_res[complex_mask, :] = d
+        d = self.Qcolor_net[-1](d_res)
+
         rgb = self.Qcolor_act(d)
 
         return rgb

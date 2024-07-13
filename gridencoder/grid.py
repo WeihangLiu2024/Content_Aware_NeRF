@@ -260,6 +260,7 @@ class GridEncoder(nn.Module):
             self.offsets[idx:] = self.offsets[idx:] + new_size
         
         self.embeddings = nn.Parameter(embedding)
+        self.n_params = self.offsets[-1] * self.level_dim
 
 
     def size_down(self):
@@ -294,4 +295,6 @@ class GridEncoder(nn.Module):
             # ),dim=0)
 
             self.offsets[idx:] = self.offsets[idx:] - new_size
+
         self.embeddings = nn.Parameter(embedding)
+        self.n_params = self.offsets[-1] * self.level_dim
