@@ -77,7 +77,7 @@ class QLinear(QModule):
 
     def __init__(self, fc_module, qi: str or bool = False, qo: str or bool = False, bit_width_init=8):
         super(QLinear, self).__init__(qi=qi, qo=qo, bit_width_init=bit_width_init)
-        self.fc_module = copy.deepcopy(fc_module)  # trained fc layer
+        self.fc_module = copy.deepcopy(fc_module)  # trained fc layer (the FP model & LBQ version can be saved independently.)
         self.qw = QParamWeight(bit_width_init=bit_width_init)
         self.qw.min_max(self.fc_module.weight.data)
         self.fc_module.weight.data = self.qw.fake_quantize(self.fc_module.weight.data)

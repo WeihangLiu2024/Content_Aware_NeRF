@@ -191,9 +191,9 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, coords=None, image=Non
     directions = torch.stack((xs, ys, zs), dim=-1) # [N, 3]
     # do not normalize to get actual depth, ref: https://github.com/dunbar12138/DSNeRF/issues/29
     # directions = directions / torch.norm(directions, dim=-1, keepdim=True) 
-    rays_d = (directions.unsqueeze(1) @ poses[:, :3, :3].transpose(-1, -2)).squeeze(1) # [N, 1, 3] @ [N, 3, 3] --> [N, 1, 3]
+    rays_d = (directions.unsqueeze(1) @ poses[:, :3, :3].transpose(-1, -2)).squeeze(1) # [N, 1, 3] @ [N, 3, 3] --> [N, 1, 3] c2w
 
-    rays_o = poses[:, :3, 3].expand_as(rays_d) # [N, 3]
+    rays_o = poses[:, :3, 3].expand_as(rays_d) # [N, 3]; T represent the movements of camera center w.r.t. origin
 
     results['rays_o'] = rays_o
     results['rays_d'] = rays_d
