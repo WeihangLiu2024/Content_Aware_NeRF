@@ -414,10 +414,10 @@ class Trainer(object):
         self.criterion = criterion
 
         # classify hash parameters
-        for name, param in self.model.encoder.named_parameters():
-            self.hash_table = param
+        # for name, param in self.model.encoder.named_parameters():
+        #     self.hash_table = param
         # self.hash_grad = torch.zeros(opt.iters, self.hash_table.shape[0], self.hash_table.shape[1])
-        self.hash_grad = []
+        # self.hash_grad = []
 
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
@@ -457,8 +457,8 @@ class Trainer(object):
             os.makedirs(self.ckpt_path, exist_ok=True)
 
             # grad saving path
-            self.hash_path = os.path.join(self.workspace, 'hash_grad_record')
-            os.makedirs(self.hash_path, exist_ok=True)
+            # self.hash_path = os.path.join(self.workspace, 'hash_grad_record')
+            # os.makedirs(self.hash_path, exist_ok=True)
             
         self.log(f'[INFO] Trainer: {self.name} | {self.time_stamp} | {self.device} | {"fp16" if self.fp16 else "fp32"} | {self.workspace}')
         self.log(f'[INFO] #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
@@ -648,13 +648,13 @@ class Trainer(object):
             self.train_one_epoch(train_loader, epoch_index=epoch-1)
 
             # save hash grad as reference
-            if (epoch-1) % 10 == 0:
-                tensor_hash = torch.stack(self.hash_grad)
-                tensor_hash = np.array(tensor_hash)
-                io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
-                           {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.sum(abs(tensor_hash), axis=0)} )
-
-            self.hash_grad = []
+            # if (epoch-1) % 10 == 0:
+            #     tensor_hash = torch.stack(self.hash_grad)
+            #     tensor_hash = np.array(tensor_hash)
+            #     io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
+            #                {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.sum(abs(tensor_hash), axis=0)} )
+            #
+            # self.hash_grad = []
 
             if (self.epoch % self.save_interval == 0 or self.epoch == max_epochs) and self.workspace is not None and self.local_rank == 0:
                 self.save_checkpoint(full=True, best=False)
@@ -885,8 +885,8 @@ class Trainer(object):
 
             # record hash grad every 50 epoch
             # self.hash_grad.append(self.hash_table.grad.detach().clone())
-            if epoch_index % 10 == 0:
-                self.hash_grad.append(self.hash_table.grad.cpu())
+            # if epoch_index % 10 == 0:
+            #     self.hash_grad.append(self.hash_table.grad.cpu())
 
             self.scaler.step(self.optimizer)
             self.scaler.update()

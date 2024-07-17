@@ -161,6 +161,7 @@ def get_config():
         opt.mark_untrained = False
 
     if opt.data_format == 'colmap':  # default setting
+        opt.enable_cam_near_far = True
         opt.background = 'random'
         opt.enable_cam_center = True
         if not opt.selfbound:
