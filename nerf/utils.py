@@ -539,8 +539,9 @@ class Trainer(object):
         loss = loss.mean()
 
         # content-aware reg
-        alpha = outputs['alpha_mean']
-        loss = loss + 1e-6 * alpha
+        if self.opt.alpha:
+            alpha = outputs['alpha_mean']
+            loss = loss + 1e-6 * alpha
 
         # extra loss
         if 'proposal_loss' in outputs and self.opt.lambda_proposal > 0:
@@ -656,24 +657,24 @@ class Trainer(object):
 
             # ========== hash table operation ==========
             # save hash grad as reference
-            if (epoch + 1) % self.opt.hash_interval == 0:
+            if (epoch < self.opt.update_hash) and ((epoch + 1) % self.opt.hash_interval == 0):
                 tensor_hash = torch.stack(self.hash_grad)
                 tensor_hash_sum = torch.sum(torch.abs(tensor_hash), dim=0)
                 if self.opt.save_grad:
                     tensor_hash = np.array(tensor_hash.cpu())
                     io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
                                {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.array(tensor_hash_sum.cpu())} )
-                if epoch < self.opt.update_hash:
-                    self.model.adjust_hash(tensor_hash_sum)
 
-                    # re-initialize training status
-                    for name, param in self.model.encoder.named_parameters():
-                        self.hash_table = param
+                self.model.adjust_hash(tensor_hash_sum)
 
-                    lr = self.optimizer.param_groups[0]['lr']
-                    self.optimizer = optim.Adam(self.model.get_params(lr), eps=1e-15)
-                    self.lr_scheduler.optimizer = self.optimizer
-                    print("Update hash table size:", self.hash_table.shape[0])
+                # re-initialize training status
+                for name, param in self.model.encoder.named_parameters():
+                    self.hash_table = param
+
+                lr = self.optimizer.param_groups[0]['lr']
+                self.optimizer = optim.Adam(self.model.get_params(lr), eps=1e-15)
+                self.lr_scheduler.optimizer = self.optimizer
+                print("Update hash table size:", self.hash_table.shape[0])
 
                 # self.optimizer.param_groups[0]['params'] = self.model.encoder.embeddings
 
@@ -912,7 +913,7 @@ class Trainer(object):
 
             # record hash grad every xxx epoch
             # self.hash_grad.append(self.hash_table.grad.detach().clone())
-            if (epoch_index+1) % self.opt.hash_interval == 0:
+            if (epoch_index < self.opt.update_hash) and ((epoch_index+1) % self.opt.hash_interval == 0):
                 self.hash_grad.append(self.hash_table.grad)
 
             self.scaler.step(self.optimizer)

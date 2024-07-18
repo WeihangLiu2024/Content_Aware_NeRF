@@ -536,7 +536,8 @@ class NeRFRenderer(nn.Module):
             results['num_points'] = xyzs.shape[0]
             results['weights'] = weights
             results['weights_sum'] = weights_sum
-            results['alpha_mean'] = outputs['alpha']
+            if self.opt.alpha:
+                results['alpha_mean'] = outputs['alpha']
         
         else:
             

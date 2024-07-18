@@ -16,6 +16,7 @@ class NeRFNetwork(NeRFRenderer):
                  ):
 
         super().__init__(opt)
+        self.alpha = opt.alpha
 
         # ======== position encoder ========
         self.encoder, self.in_dim = get_encoder(encoding="hashgrid", desired_resolution=2048 * self.bound, log2_hashmap_size=opt.log2_hashmap_size)
@@ -59,7 +60,7 @@ class NeRFNetwork(NeRFRenderer):
                 color_net.append(nn.Linear(in_dim, out_dim, bias=False))
                 # rgb is activated by sigmoid (see forward)
             else:
-                if l == 0:
+                if self.alpha and l == 0:
                     out_dim = hidden_dim_color + 1 # uncertainty, early termination indicator
                 else:
                     out_dim = hidden_dim_color
@@ -110,55 +111,61 @@ class NeRFNetwork(NeRFRenderer):
         # ======== color net ========
         h = torch.cat([d, geo_feat], dim=-1)
 
-        # content-aware uncertainty
-        h = self.color_net[0](h)
-        alpha = h[:, 0].unsqueeze(dim=1)  # uncertainty
-        h_res = h[:, 1:]
-        h = h_res
-        alpha = torch.sigmoid(alpha) # when this value is low, it means the point is quite simple and the further calculation is redundant
+        if self.alpha:
+            # content-aware uncertainty
+            h = self.color_net[0](h)
+            alpha = h[:, 0].unsqueeze(dim=1)  # uncertainty
+            h_res = h[:, 1:]
+            h = h_res
+            alpha = torch.sigmoid(alpha) # when this value is low, it means the point is quite simple and the further calculation is redundant
 
-        # # complex point processing
-        # for l in range(1, len(self.color_net) - 1):
-        #     h = self.color_net[l](h)
-        # # final blend
-        # h_new = alpha * h + (1 - alpha) * h_res
-        # h = self.color_net[-1](h_new)
+            # # complex point processing
+            # for l in range(1, len(self.color_net) - 1):
+            #     h = self.color_net[l](h)
+            # # final blend
+            # h_new = alpha * h + (1 - alpha) * h_res
+            # h = self.color_net[-1](h_new)
 
-        if self.training and kwargs["step"] < 10000:
-            # complex point processing
-            for l in range(1, len(self.color_net)-1):
-                h = self.color_net[l](h)
-            # final blend
-            h = alpha * h + (1-alpha) * h_res
-            h = self.color_net[-1](h)
+            if self.training and kwargs["step"] < 10000:
+                # complex point processing
+                for l in range(1, len(self.color_net)-1):
+                    h = self.color_net[l](h)
+                # final blend
+                h = alpha * h + (1-alpha) * h_res
+                h = self.color_net[-1](h)
+            else:
+                complex_mask = (alpha >= 0.5).squeeze() # pre-defined threshold, this is a conservative value
+                # complex point processing
+                h = h[complex_mask,:]
+                for l in range(1, len(self.color_net)-1):
+                    h = self.color_net[l](h)
+                h_res[complex_mask,:] = h
+                h = self.color_net[-1](h_res)
+            # sigmoid activation for rgb
+            color = torch.sigmoid(h)
+            if self.training and kwargs["step"] < 10000:
+                return {
+                    'sigma': sigma,
+                    'color': color,
+                    'alpha': alpha.mean()
+                    # 'alpha': 0
+                }
+            else:
+                return {
+                    'sigma': sigma,
+                    'color': color,
+                    # 'alpha': alpha.mean()
+                    'alpha': 0
+                }
         else:
-            complex_mask = (alpha >= 0.5).squeeze() # pre-defined threshold, this is a conservative value
-            # complex point processing
-            h = h[complex_mask,:]
-            for l in range(1, len(self.color_net)-1):
+            for l in range(len(self.color_net)):
                 h = self.color_net[l](h)
-            h_res[complex_mask,:] = h
-            h = self.color_net[-1](h_res)
+            # sigmoid activation for rgb
+            color = torch.sigmoid(h)
 
-        # for l in range(len(self.color_net)):
-        #     h = self.color_net[l](h)
-
-        # sigmoid activation for rgb
-        color = torch.sigmoid(h)
-
-        if self.training and kwargs["step"] < 10000:
             return {
                 'sigma': sigma,
-                'color': color,
-                'alpha': alpha.mean()
-                # 'alpha': 0
-            }
-        else:
-            return {
-                'sigma': sigma,
-                'color': color,
-                # 'alpha': alpha.mean()
-                'alpha': 0
+                'color': color
             }
 
     def density(self, x, **kwargs):

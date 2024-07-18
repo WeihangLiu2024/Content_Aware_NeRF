@@ -123,6 +123,9 @@ def get_config():
     parser.add_argument('--hash_interval', type=int, default=10, help="update every xxx epoches")
     parser.add_argument('--save_grad', action='store_true', help="save gradients locally for hash table every <hash_interval> epoches")
 
+    ### alpha-mechanism
+    parser.add_argument('--alpha', action='store_true', help="uncertainty prediction flag")
+
     opt = parser.parse_args()
 
     if opt.O:
@@ -172,6 +175,7 @@ def get_config():
             opt.bound = 8.0
         opt.dt_gamma = 0
         opt.random_image_batch = True
+        opt.enable_cam_near_far = True
 
     if opt.data_format == 'nerf':  # default setting
         opt.background = 'random'
