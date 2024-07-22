@@ -74,6 +74,10 @@ class NeRFNetwork(NeRFRenderer):
         self.qsigma_net = None
         self.qencoder_dir = None
         self.qcolor_net = None
+        #
+        # # ======= alpha statistical =======
+        self.alpha_sum = 0
+        self.alpha_skip = 0  # number of simple points
 
         # proposal network  (??? Weihang Liu)
         # if not self.opt.cuda_ray:
@@ -115,9 +119,8 @@ class NeRFNetwork(NeRFRenderer):
             # content-aware uncertainty
             h = self.color_net[0](h)
             alpha = h[:, 0].unsqueeze(dim=1)  # uncertainty
-            h_res = h[:, 1:]
-            h = h_res
             alpha = torch.sigmoid(alpha) # when this value is low, it means the point is quite simple and the further calculation is redundant
+            h = h[:, 1:]
 
             # # complex point processing
             # for l in range(1, len(self.color_net) - 1):
@@ -127,23 +130,16 @@ class NeRFNetwork(NeRFRenderer):
             # h = self.color_net[-1](h_new)
 
             if self.training and kwargs["step"] < 10000:
+            # if False: # debug
                 # complex point processing
-                for l in range(1, len(self.color_net)-1):
-                    h = self.color_net[l](h)
+                h_relu = self.color_net[1](h)
+                for l in range(2, len(self.color_net)-1):
+                    h = self.color_net[l](h_relu)
                 # final blend
-                h = alpha * h + (1-alpha) * h_res
-                h = self.color_net[-1](h)
-            else:
-                complex_mask = (alpha >= 0.5).squeeze() # pre-defined threshold, this is a conservative value
-                # complex point processing
-                h = h[complex_mask,:]
-                for l in range(1, len(self.color_net)-1):
-                    h = self.color_net[l](h)
-                h_res[complex_mask,:] = h
-                h = self.color_net[-1](h_res)
-            # sigmoid activation for rgb
-            color = torch.sigmoid(h)
-            if self.training and kwargs["step"] < 10000:
+                h = alpha * h + (1-alpha) * h_relu
+                h = self.color_net[-1](h)  # final decode
+                # sigmoid activation for rgb
+                color = torch.sigmoid(h)
                 return {
                     'sigma': sigma,
                     'color': color,
@@ -151,6 +147,19 @@ class NeRFNetwork(NeRFRenderer):
                     # 'alpha': 0
                 }
             else:
+                complex_mask = (alpha >= 0.5).squeeze() # pre-defined threshold, this is a conservative value
+                if not self.training:
+                    self.alpha_sum += alpha.shape[0]
+                    self.alpha_skip += complex_mask.sum()
+                h_relu = self.color_net[1](h).clone()  # here clone() is necessary to avoid "gradient computation error due tp inplace operation", but why?
+                # complex point processing
+                h = h_relu[complex_mask,:]
+                for l in range(2, len(self.color_net)-1):
+                    h = self.color_net[l](h)
+                h_relu[complex_mask,:] = h
+                h = self.color_net[-1](h_relu)  # final decode
+                # sigmoid activation for rgb
+                color = torch.sigmoid(h)
                 return {
                     'sigma': sigma,
                     'color': color,

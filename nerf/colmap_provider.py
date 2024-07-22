@@ -191,7 +191,9 @@ class ColmapDataset:
         print(f'[INFO] ColmapDataset: load poses {self.poses.shape}, points {self.pts3d.shape}')
 
         # rectify convention...
-        self.poses[:, :3, 1:3] *= -1
+        # details see https://github.com/NVlabs/instant-ngp/discussions/153?converting=1
+        self.poses[:, :3, 1:3] *= -1  # transform OpenCV/COLMAP (RDF) coordinate to NeRF/OpenGL (RUB)
+        # transform NeRF coordinate (x, y, z) to (y, x, -z) why ???
         self.poses = self.poses[:, [1, 0, 2, 3], :]
         self.poses[:, 2] *= -1
 

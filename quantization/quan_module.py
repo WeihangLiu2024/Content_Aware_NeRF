@@ -412,11 +412,12 @@ class QcolorNet(nn.Module):
         # uncertainty calculation
         alpha = d[:, 0].unsqueeze(dim=1)  # uncertainty
         d_res = d[:, 1:]
+        d_res = self.Qcolor_net[1].calibration(d_res)  # ReLU
         d = d_res
         alpha = torch.sigmoid(alpha)
         complex_mask = (alpha >= 0.5).squeeze()
         d = d[complex_mask, :]
-        for l in range(1, len(self.Qcolor_net)-1):  # 5 layerss
+        for l in range(2, len(self.Qcolor_net)-1):  # 5 layerss
             if len(d) == 0:
                 break
             d = self.Qcolor_net[l].calibration(d)
@@ -438,13 +439,14 @@ class QcolorNet(nn.Module):
         d = self.Qcolor_net[0](d)
         alpha = d[:, 0].unsqueeze(dim=1)  # uncertainty
         d_res = d[:, 1:]
+        d_res = self.Qcolor_net[1](d_res)
         d = d_res
         alpha = torch.sigmoid(alpha)
 
         complex_mask = (alpha >= 0.5).squeeze()  # pre-defined threshold, this is a conservative value
         # complex point processing
         d = d[complex_mask, :]
-        for l in range(1, len(self.color_net) - 1):
+        for l in range(2, len(self.color_net) - 1):
             d = self.Qcolor_net[l](d)
         d_res[complex_mask, :] = d
         d = self.Qcolor_net[-1](d_res)

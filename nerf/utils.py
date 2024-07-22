@@ -1390,7 +1390,7 @@ class QatTrainer(object):
 
         self.log(
             f'[INFO] Trainer: {self.name} | {self.time_stamp} | {self.device} | {"fp16" if self.fp16 else "fp32"} | {self.workspace}')
-        self.log(f'[INFO] #parameters: {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
+        self.log(f'[INFO] #parameters (summation of un-quantized and quantized version): {sum([p.numel() for p in model.parameters() if p.requires_grad])}')
 
         self.log(opt)
         # self.log(self.model)

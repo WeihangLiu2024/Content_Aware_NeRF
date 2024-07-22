@@ -129,7 +129,7 @@ def get_config():
     opt = parser.parse_args()
 
     if opt.O:
-        opt.fp16 = False  # TODO: This is not supported by QAT
+        opt.fp16 = False  # TODO: This is not supported by QAT yet
         opt.preload = True
         opt.cuda_ray = True
         opt.mark_untrained = True
@@ -137,7 +137,7 @@ def get_config():
         opt.random_image_batch = False  # TODO: make it compatibility to object-nerf ray selection (avoid ray of free space)
 
     if opt.O2:
-        opt.fp16 = False  # TODO: This is not supported by QAT
+        opt.fp16 = False  # TODO: This is not supported by QAT yet
         opt.bound = 128  # large enough
         opt.preload = True
         opt.contract = True

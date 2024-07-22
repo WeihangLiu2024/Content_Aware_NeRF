@@ -1,3 +1,5 @@
+import os
+import subprocess
 import torch
 import argparse
 import torch.optim as optim
@@ -9,7 +11,11 @@ from nerf.network import NeRFNetwork
 
 from quantization.paradigm import *
 
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
+
+cmd = 'nvidia-smi -q -d Memory |grep -A4 GPU|grep Used'
+result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE).stdout.decode().split('\n')
+os.environ['CUDA_VISIBLE_DEVICES']=str(np.argmin([int(x.split()[2]) for x in result[:-1]]))
 
 if __name__ == '__main__':
 
@@ -90,6 +96,7 @@ if __name__ == '__main__':
             trainer.metrics = [PSNRMeter(), SSIMMeter(), LPIPSMeter(device=device)]
             ################################
             loss_val_fp = trainer.evaluate(valid_loader)
+            trainer.log(f"alpha skip rate:{1 - trainer.model.alpha_skip/trainer.model.alpha_sum}")
 
             # also test
             test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
