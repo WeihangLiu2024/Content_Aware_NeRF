@@ -1,21 +1,23 @@
 import os
 import subprocess
+from nerf.utils import *
+
+cmd = 'nvidia-smi -q -d Memory |grep -A4 GPU|grep Used'
+result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE).stdout.decode().split('\n')
+os.environ['CUDA_VISIBLE_DEVICES']=str(np.argmin([int(x.split()[2]) for x in result[:-1]]))
+# print(f'GPU selected: {os.environ["CUDA_VISIBLE_DEVICES"]}')
+
 import torch
 import argparse
 import torch.optim as optim
 
 from nerf.gui import NeRFGUI
-from nerf.utils import *
 from config.GetConfig import get_config
 from nerf.network import NeRFNetwork
 
 from quantization.paradigm import *
 
-torch.autograd.set_detect_anomaly(True)
-
-cmd = 'nvidia-smi -q -d Memory |grep -A4 GPU|grep Used'
-result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE).stdout.decode().split('\n')
-os.environ['CUDA_VISIBLE_DEVICES']=str(np.argmin([int(x.split()[2]) for x in result[:-1]]))
+# torch.autograd.set_detect_anomaly(True)
 
 if __name__ == '__main__':
 
@@ -96,7 +98,7 @@ if __name__ == '__main__':
             trainer.metrics = [PSNRMeter(), SSIMMeter(), LPIPSMeter(device=device)]
             ################################
             loss_val_fp = trainer.evaluate(valid_loader)
-            trainer.log(f"alpha skip rate:{1 - trainer.model.alpha_skip/trainer.model.alpha_sum}")
+            trainer.log(f"alpha skip rate:{1 - trainer.model.alpha_complex/trainer.model.alpha_sum}")
 
             # also test
             test_loader = NeRFDataset(opt, device=device, type='test').dataloader()

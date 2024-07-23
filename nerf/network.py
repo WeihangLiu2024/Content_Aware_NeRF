@@ -77,7 +77,7 @@ class NeRFNetwork(NeRFRenderer):
         #
         # # ======= alpha statistical =======
         self.alpha_sum = 0
-        self.alpha_skip = 0  # number of simple points
+        self.alpha_complex = 0  # number of simple points
 
         # proposal network  (??? Weihang Liu)
         # if not self.opt.cuda_ray:
@@ -149,8 +149,8 @@ class NeRFNetwork(NeRFRenderer):
             else:
                 complex_mask = (alpha >= 0.5).squeeze() # pre-defined threshold, this is a conservative value
                 if not self.training:
-                    self.alpha_sum += alpha.shape[0]
-                    self.alpha_skip += complex_mask.sum()
+                    self.alpha_sum += torch.sum(~torch.isnan(alpha))
+                    self.alpha_complex += complex_mask.sum()
                 h_relu = self.color_net[1](h).clone()  # here clone() is necessary to avoid "gradient computation error due tp inplace operation", but why?
                 # complex point processing
                 h = h_relu[complex_mask,:]
