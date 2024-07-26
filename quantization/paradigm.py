@@ -3,14 +3,14 @@ from .quan_analysis import *
 from .utils import *
 
 
-def ptq(model, train_loader, device):
+def ptq(model, train_loader, device, opt):
     print('PTQ starts \n')
     # direct pass calibration data w/o training
     # use QParam.update to update quan. parameter,
     # in case of BN layer changes in model.train(), use model.eval() instead
     model.to(device)
     model.eval()
-
+    model.opt.num_rays = opt.num_rays
     progress_bar = tqdm.tqdm(total=100, desc=f'PTQ')
     for i, data in enumerate(train_loader):
         rays_o = data['rays_o'] # [B(batch), N(sampled rays), 3(rgb)]

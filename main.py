@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
                 # ======= Quantization 2: pass calibration data to get scale/offset =======
                 # use PTQ as the starting point of QAT
-                ptq(model, train_loader, device=device)
+                ptq(model, train_loader, device, opt)
                 # trainer_qat.evaluate(test_loader, name='PTQ')
                 print("PTQ completed")
 
