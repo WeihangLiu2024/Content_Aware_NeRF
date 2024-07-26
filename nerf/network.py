@@ -236,7 +236,9 @@ class NeRFNetwork(NeRFRenderer):
         self.qencoder = Qencoder(self.encoder, bit_width_init=bit_width_init)
         self.qsigma_net = QsigmaNet(self.sigma_net, bit_width_init=bit_width_init)
         self.qencoder_dir = QencoderDir(self.encoder_dir, bit_width_init=bit_width_init)
-        self.qcolor_net = QcolorNet(self.color_net, bit_width_init=bit_width_init, uncertainty_weight=self.uncertainty_net.weight, uncertainty_metric=self.uncertainty_metric)
+        self.qcolor_net = QcolorNet(self.color_net, bit_width_init=bit_width_init,
+                                    uncertainty_weight=self.uncertainty_net.weight if self.opt.alpha else None,
+                                    uncertainty_metric=self.uncertainty_metric)
 
     # pass calibration data
     def calibration(self, x, d):
@@ -331,7 +333,7 @@ class NeRFNetwork(NeRFRenderer):
 
         self.to('cuda')
 
-    def adjust_hash(self, gradient, threshold_up=1e-6, threshold_down=3e-7):
+    def adjust_hash(self, gradient, threshold_up=8e-7, threshold_down=2e-7):
         # gradient: accumulated gradients. [s0, C] -> [number of params, feature dim]
         # threshold: pre-defined threshold. [up, down] -> [scale up threshold, scale down threshold]
         gradient_mean = torch.mean(gradient)
