@@ -500,17 +500,19 @@ void march_rays_train(const at::Tensor rays_o, const at::Tensor rays_d, const at
 template <typename scalar_t>
 __global__ void kernel_composite_rays_train_forward(
     const scalar_t * __restrict__ sigmas,
-    const scalar_t * __restrict__ rgbs,  
+    const scalar_t * __restrict__ rgbs,
+    const scalar_t * __restrict__ uncertainty,
     const scalar_t * __restrict__ ts,
     const int * __restrict__ rays,
     const uint32_t M, const uint32_t N, const float T_thresh, const bool alpha_mode,
     scalar_t * weights,
     scalar_t * weights_sum,
     scalar_t * depth,
-    scalar_t * image
+    scalar_t * image,
+    scalar_t * uncertainty_mean
 ) {
     // parallel per ray
-    const uint32_t n = threadIdx.x + blockIdx.x * blockDim.x;
+    const uint32_t n = threadIdx.x + blockIdx.x * blockDim.x;  // n is the index of rays
     if (n >= N) return;
 
     // locate 
@@ -524,6 +526,7 @@ __global__ void kernel_composite_rays_train_forward(
         image[n * 3] = 0;
         image[n * 3 + 1] = 0;
         image[n * 3 + 2] = 0;
+        uncertainty_mean[n] = 0;
         return;
     }
 
@@ -531,14 +534,20 @@ __global__ void kernel_composite_rays_train_forward(
     weights += offset;
     sigmas += offset;
     rgbs += offset * 3;
+    uncertainty += offset;  // pointer calculation
 
     // accumulate 
     uint32_t step = 0;
 
     float T = 1.0f;
-    float r = 0, g = 0, b = 0, ws = 0, d = 0;
+    float r = 0, g = 0, b = 0, ws = 0, d = 0, uncertainty_sum = 0;
 
     while (step < num_steps) {
+
+        // debug
+        // if (n == 0 && step == 0){
+        //     printf("ray_0, uncertainty[0]:%f \n uncertainty[1]: %f \n uncertainty[2]: %f", uncertainty[0], uncertainty[1], uncertainty[2]);
+        // }
 
         const float alpha = alpha_mode ? (float)sigmas[0] : (1.0f - __expf(- sigmas[0] * ts[1]));
         const float weight = alpha * T;
@@ -550,6 +559,7 @@ __global__ void kernel_composite_rays_train_forward(
         b += weight * rgbs[2];
         ws += weight;
         d += weight * ts[0];
+        uncertainty_sum += uncertainty[0];
         
         T *= 1.0f - alpha;
 
@@ -558,11 +568,12 @@ __global__ void kernel_composite_rays_train_forward(
 
         //printf("[n=%d] num_steps=%d, alpha=%f, w=%f, T=%f, sum_dt=%f, d=%f\n", n, step, alpha, weight, T, sum_delta, d);
 
-        // locate
+        // locate pointer
         weights++;
         sigmas++;
         rgbs += 3;
         ts += 2;
+        uncertainty++;
 
         step++;
     }
@@ -575,16 +586,44 @@ __global__ void kernel_composite_rays_train_forward(
     image[n * 3] = r;
     image[n * 3 + 1] = g;
     image[n * 3 + 2] = b;
+    uncertainty_mean[n] = uncertainty_sum / num_steps;
+//     uncertainty_mean[n] = uncertainty_sum;
 }
 
 
-void composite_rays_train_forward(const at::Tensor sigmas, const at::Tensor rgbs, const at::Tensor ts, const at::Tensor rays, const uint32_t M, const uint32_t N, const float T_thresh, const bool alpha_mode, at::Tensor weights, at::Tensor weights_sum, at::Tensor depth, at::Tensor image) {
+void composite_rays_train_forward(
+    const at::Tensor sigmas, 
+    const at::Tensor rgbs, 
+    const at::Tensor uncertainty, 
+    const at::Tensor ts, 
+    const at::Tensor rays, 
+    const uint32_t M, 
+    const uint32_t N, 
+    const float T_thresh, 
+    const bool alpha_mode, 
+    at::Tensor weights, 
+    at::Tensor weights_sum, 
+    at::Tensor depth, 
+    at::Tensor image, 
+    at::Tensor uncertainty_mean) {
 
     static constexpr uint32_t N_THREAD = 128;
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
     sigmas.scalar_type(), "composite_rays_train_forward", ([&] {
-        kernel_composite_rays_train_forward<<<div_round_up(N, N_THREAD), N_THREAD>>>(sigmas.data_ptr<scalar_t>(), rgbs.data_ptr<scalar_t>(), ts.data_ptr<scalar_t>(), rays.data_ptr<int>(), M, N, T_thresh, alpha_mode, weights.data_ptr<scalar_t>(), weights_sum.data_ptr<scalar_t>(), depth.data_ptr<scalar_t>(), image.data_ptr<scalar_t>());
+        kernel_composite_rays_train_forward<<<div_round_up(N, N_THREAD), N_THREAD>>>(
+            sigmas.data_ptr<scalar_t>(), 
+            rgbs.data_ptr<scalar_t>(), 
+            uncertainty.data_ptr<scalar_t>(), 
+            ts.data_ptr<scalar_t>(), 
+            rays.data_ptr<int>(), 
+            M, N, T_thresh, alpha_mode, 
+            weights.data_ptr<scalar_t>(), 
+            weights_sum.data_ptr<scalar_t>(), 
+            depth.data_ptr<scalar_t>(), 
+            image.data_ptr<scalar_t>(), 
+            uncertainty_mean.data_ptr<scalar_t>() 
+            );
     }));
 }
 
@@ -607,6 +646,7 @@ __global__ void kernel_composite_rays_train_backward(
     const scalar_t * __restrict__ grad_weights_sum,
     const scalar_t * __restrict__ grad_depth,
     const scalar_t * __restrict__ grad_image,
+    const scalar_t * __restrict__ grad_uncertainty_mean,
     const scalar_t * __restrict__ sigmas,
     const scalar_t * __restrict__ rgbs, 
     const scalar_t * __restrict__ ts,
@@ -616,10 +656,11 @@ __global__ void kernel_composite_rays_train_backward(
     const scalar_t * __restrict__ image,
     const uint32_t M, const uint32_t N, const float T_thresh, const bool alpha_mode,
     scalar_t * grad_sigmas,
-    scalar_t * grad_rgbs
+    scalar_t * grad_rgbs,
+    scalar_t * grad_uncertainty
 ) {
     // parallel per ray
-    const uint32_t n = threadIdx.x + blockIdx.x * blockDim.x;
+    const uint32_t n = threadIdx.x + blockIdx.x * blockDim.x; // n is the index of ray
     if (n >= N) return;
 
     // locate 
@@ -632,6 +673,7 @@ __global__ void kernel_composite_rays_train_backward(
     grad_weights_sum += n;
     grad_depth += n;
     grad_image += n * 3;
+    grad_uncertainty_mean += n;
     weights_sum += n;
     depth += n;
     image += n * 3;
@@ -640,6 +682,7 @@ __global__ void kernel_composite_rays_train_backward(
     ts += offset * 2;
     grad_sigmas += offset;
     grad_rgbs += offset * 3;
+    grad_uncertainty += offset;
 
     // accumulate 
     uint32_t step = 0;
@@ -677,6 +720,9 @@ __global__ void kernel_composite_rays_train_backward(
             grad_depth[0] * (T * ts[0] - (d_final - d))
         );
 
+        //write grad_uncertainty
+        grad_uncertainty[0] = grad_uncertainty_mean[0] / static_cast<float>(num_steps);
+
         //printf("[n=%d] num_steps=%d, T=%f, grad_sigmas=%f, r_final=%f, r=%f\n", n, step, T, grad_sigmas[0], r_final, r);
         // minimal remained transmittence
         if (T < T_thresh) break;
@@ -688,19 +734,53 @@ __global__ void kernel_composite_rays_train_backward(
         grad_weights++;
         grad_sigmas++;
         grad_rgbs += 3;
+        grad_uncertainty++;
 
         step++;
     }
 }
 
 
-void composite_rays_train_backward(const at::Tensor grad_weights, const at::Tensor grad_weights_sum, const at::Tensor grad_depth, const at::Tensor grad_image, const at::Tensor sigmas, const at::Tensor rgbs, const at::Tensor ts, const at::Tensor rays, const at::Tensor weights_sum, const at::Tensor depth, const at::Tensor image, const uint32_t M, const uint32_t N, const float T_thresh, const bool alpha_mode, at::Tensor grad_sigmas, at::Tensor grad_rgbs) {
+void composite_rays_train_backward(
+    const at::Tensor grad_weights, 
+    const at::Tensor grad_weights_sum, 
+    const at::Tensor grad_depth, 
+    const at::Tensor grad_image, 
+    const at::Tensor grad_uncertainty_mean, 
+    const at::Tensor sigmas, 
+    const at::Tensor rgbs, 
+    const at::Tensor ts, 
+    const at::Tensor rays, 
+    const at::Tensor weights_sum, 
+    const at::Tensor depth, 
+    const at::Tensor image, 
+    const uint32_t M, const uint32_t N, 
+    const float T_thresh, const bool alpha_mode, 
+    at::Tensor grad_sigmas, 
+    at::Tensor grad_rgbs, 
+    at::Tensor grad_uncertainty) {
 
     static constexpr uint32_t N_THREAD = 128;
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
     grad_image.scalar_type(), "composite_rays_train_backward", ([&] {
-        kernel_composite_rays_train_backward<<<div_round_up(N, N_THREAD), N_THREAD>>>(grad_weights.data_ptr<scalar_t>(), grad_weights_sum.data_ptr<scalar_t>(), grad_depth.data_ptr<scalar_t>(), grad_image.data_ptr<scalar_t>(), sigmas.data_ptr<scalar_t>(), rgbs.data_ptr<scalar_t>(), ts.data_ptr<scalar_t>(), rays.data_ptr<int>(), weights_sum.data_ptr<scalar_t>(), depth.data_ptr<scalar_t>(), image.data_ptr<scalar_t>(), M, N, T_thresh, alpha_mode, grad_sigmas.data_ptr<scalar_t>(), grad_rgbs.data_ptr<scalar_t>());
+        kernel_composite_rays_train_backward<<<div_round_up(N, N_THREAD), N_THREAD>>>(
+            grad_weights.data_ptr<scalar_t>(), 
+            grad_weights_sum.data_ptr<scalar_t>(), 
+            grad_depth.data_ptr<scalar_t>(), 
+            grad_image.data_ptr<scalar_t>(), 
+            grad_uncertainty_mean.data_ptr<scalar_t>(), 
+            sigmas.data_ptr<scalar_t>(), 
+            rgbs.data_ptr<scalar_t>(), 
+            ts.data_ptr<scalar_t>(), 
+            rays.data_ptr<int>(), 
+            weights_sum.data_ptr<scalar_t>(), 
+            depth.data_ptr<scalar_t>(), 
+            image.data_ptr<scalar_t>(), 
+            M, N, T_thresh, alpha_mode, 
+            grad_sigmas.data_ptr<scalar_t>(), 
+            grad_rgbs.data_ptr<scalar_t>(), 
+            grad_uncertainty.data_ptr<scalar_t>());
     }));
 }
 
