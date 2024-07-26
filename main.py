@@ -62,7 +62,9 @@ if __name__ == '__main__':
     else:  # training, evaluation and testing
         loss_fp = 0  # final loss with full-precision model; loss on test_dataset (if not exist, on val_dataset)
                      # this value serves as reference for bit-width learning in QAT
-        optimizer = optim.Adam(model.get_params(opt.lr), eps=1e-15)
+        # optimizer = optim.Adam(model.get_params(opt.lr), eps=1e-15)
+        optimizer = lambda param: optim.Adam(params=param, lr=opt.lr,
+                                                 betas=(0.9, 0.99), eps=1e-15)
 
         train_loader = NeRFDataset(opt, device=device, type=opt.train_split).dataloader()
         batch_num = len(train_loader)
@@ -76,7 +78,7 @@ if __name__ == '__main__':
         if not opt.contract and opt.data_format == 'colmap':
             model.update_aabb(train_loader._data.pts_aabb)
 
-        scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.1 ** min(iter / opt.iters, 1))
+        scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.1 ** min(iter / opt.iters, 1))
 
         trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, optimizer=optimizer,
                           criterion=criterion, ema_decay=0.95, fp16=opt.fp16, lr_scheduler=scheduler,
@@ -98,7 +100,8 @@ if __name__ == '__main__':
             trainer.metrics = [PSNRMeter(), SSIMMeter(), LPIPSMeter(device=device)]
             ################################
             loss_val_fp = trainer.evaluate(valid_loader)
-            trainer.log(f"alpha skip rate:{1 - trainer.model.alpha_complex/trainer.model.alpha_sum}")
+            if opt.alpha:
+                trainer.log(f"alpha skip rate:{1 - trainer.model.alpha_complex/trainer.model.alpha_sum}")
 
             # also test
             test_loader = NeRFDataset(opt, device=device, type='test').dataloader()

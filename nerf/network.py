@@ -61,10 +61,9 @@ class NeRFNetwork(NeRFRenderer):
                 # rgb is activated by sigmoid (see forward)
             else:
                 if self.alpha and l == 0:
-                    out_dim = hidden_dim_color + 1 # uncertainty, early termination indicator
-                else:
-                    out_dim = hidden_dim_color
-                # out_dim = hidden_dim_color
+                    self.uncertainty_net = nn.Linear(in_dim, 1, bias=False)
+                    # out_dim = hidden_dim_color + 1 # uncertainty, early termination indicator
+                out_dim = hidden_dim_color
                 color_net.append(nn.Linear(in_dim, out_dim, bias=False))
                 color_net.append(nn.ReLU())
         self.color_net = nn.ModuleList(color_net)
@@ -76,8 +75,13 @@ class NeRFNetwork(NeRFRenderer):
         self.qcolor_net = None
         #
         # # ======= alpha statistical =======
-        self.alpha_sum = 0
-        self.alpha_complex = 0  # number of simple points
+        if self.alpha:
+            self.target = 35 # [dB]
+            self.uncertainty_metric = 0.5 * 10 ** (-1 * self.target / 10)
+            self.alpha_sum = 0
+            self.alpha_complex = 0  # number of simple points
+        else:
+            self.uncertainty_metric = 0
 
         # proposal network  (??? Weihang Liu)
         # if not self.opt.cuda_ray:
@@ -113,14 +117,12 @@ class NeRFNetwork(NeRFRenderer):
         # ======== direction encoder ========
         d = self.encoder_dir(d)
         # ======== color net ========
-        h = torch.cat([d, geo_feat], dim=-1)
-
         if self.alpha:
+            h_in = torch.cat([d, geo_feat], dim=-1)
             # content-aware uncertainty
-            h = self.color_net[0](h)
-            alpha = h[:, 0].unsqueeze(dim=1)  # uncertainty
+            h = self.color_net[0](h_in)
+            alpha = self.uncertainty_net(h_in)  # uncertainty
             alpha = torch.sigmoid(alpha) # when this value is low, it means the point is quite simple and the further calculation is redundant
-            h = h[:, 1:]
 
             # # complex point processing
             # for l in range(1, len(self.color_net) - 1):
@@ -136,18 +138,20 @@ class NeRFNetwork(NeRFRenderer):
                 for l in range(2, len(self.color_net)-1):
                     h = self.color_net[l](h_relu)
                 # final blend
-                h = alpha * h + (1-alpha) * h_relu
+                # h = alpha * h + (1-alpha) * h_relu
+                # residual connection
+                h = 0.5 * h + 0.5 * h_relu
                 h = self.color_net[-1](h)  # final decode
                 # sigmoid activation for rgb
                 color = torch.sigmoid(h)
                 return {
                     'sigma': sigma,
                     'color': color,
-                    'alpha': alpha.mean()
+                    'alpha': alpha
                     # 'alpha': 0
                 }
             else:
-                complex_mask = (alpha >= 0.5).squeeze() # pre-defined threshold, this is a conservative value
+                complex_mask = (alpha >= self.uncertainty_metric).squeeze() # pre-defined threshold, this is a conservative value
                 if not self.training:
                     self.alpha_sum += torch.sum(~torch.isnan(alpha))
                     self.alpha_complex += complex_mask.sum()
@@ -164,9 +168,10 @@ class NeRFNetwork(NeRFRenderer):
                     'sigma': sigma,
                     'color': color,
                     # 'alpha': alpha.mean()
-                    'alpha': 0
+                    'alpha': alpha
                 }
         else:
+            h = torch.cat([d, geo_feat], dim=-1)
             for l in range(len(self.color_net)):
                 h = self.color_net[l](h)
             # sigmoid activation for rgb
@@ -174,7 +179,8 @@ class NeRFNetwork(NeRFRenderer):
 
             return {
                 'sigma': sigma,
-                'color': color
+                'color': color,
+                'alpha': torch.zeros(color.shape[0],1, device=color.device)
             }
 
     def density(self, x, **kwargs):
@@ -230,7 +236,7 @@ class NeRFNetwork(NeRFRenderer):
         self.qencoder = Qencoder(self.encoder, bit_width_init=bit_width_init)
         self.qsigma_net = QsigmaNet(self.sigma_net, bit_width_init=bit_width_init)
         self.qencoder_dir = QencoderDir(self.encoder_dir, bit_width_init=bit_width_init)
-        self.qcolor_net = QcolorNet(self.color_net, bit_width_init=bit_width_init)
+        self.qcolor_net = QcolorNet(self.color_net, bit_width_init=bit_width_init, uncertainty_weight=self.uncertainty_net.weight, uncertainty_metric=self.uncertainty_metric)
 
     # pass calibration data
     def calibration(self, x, d):
@@ -249,7 +255,7 @@ class NeRFNetwork(NeRFRenderer):
 
         # ======== color net ========
         h = torch.cat([d, geo_feat], dim=-1)
-        color = self.qcolor_net.calibration(h)
+        color = self.qcolor_net.calibration(h, self.uncertainty_metric)
 
         return {
             'sigma': sigma,
@@ -279,7 +285,7 @@ class NeRFNetwork(NeRFRenderer):
         # ======== color net ========
         # start_time = time.time()
         qh = torch.cat([d, geo_feat], dim=-1)
-        color = self.qcolor_net(qh)
+        color = self.qcolor_net(qh, self.uncertainty_metric)
         # end_time = time.time()
         # print("time (qcolor_net)：", end_time - start_time, "s")
 

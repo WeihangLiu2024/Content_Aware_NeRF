@@ -530,14 +530,14 @@ class NeRFRenderer(nn.Module):
                 rgbs = outputs['color']
 
 
-            weights, weights_sum, depth, image = raymarching.composite_rays_train(sigmas, rgbs, ts, rays,
+            weights, weights_sum, depth, image, outputs['alpha'] = raymarching.composite_rays_train(sigmas, rgbs, outputs['alpha'], ts, rays,
                                                                                   self.opt.T_thresh)
 
             results['num_points'] = xyzs.shape[0]
             results['weights'] = weights
             results['weights_sum'] = weights_sum
             if self.opt.alpha:
-                results['alpha_mean'] = outputs['alpha']
+                results['alpha'] = outputs['alpha']
         
         else:
             
@@ -932,8 +932,9 @@ class NeRFRenderer(nn.Module):
                 outputs = self.quantize_forward(xyzs, dirs)
                 sigmas = outputs['sigma']
                 rgbs = outputs['color']
+                outputs['alpha'] = torch.empty(xyzs.shape[0], 1, device=xyzs.device)
 
-            weights, weights_sum, depth, image = raymarching.composite_rays_train(sigmas, rgbs, ts, rays,
+            weights, weights_sum, depth, image, outputs['alpha'] = raymarching.composite_rays_train(sigmas, rgbs, outputs['alpha'], ts, rays,
                                                                                   self.opt.T_thresh)
 
             results['num_points'] = xyzs.shape[0]

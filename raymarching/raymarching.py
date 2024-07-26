@@ -258,7 +258,7 @@ march_rays_train = _march_rays_train.apply
 class _composite_rays_train(Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, sigmas, rgbs, ts, rays, T_thresh=1e-4, alpha_mode=False):
+    def forward(ctx, sigmas, rgbs, uncertainty, ts, rays, T_thresh=1e-4, alpha_mode=False):
         ''' composite rays' rgbs, according to the ray marching formula.
         Args:
             rgbs: float, [M, 3]
@@ -284,32 +284,46 @@ class _composite_rays_train(Function):
 
         depth = torch.empty(N, dtype=sigmas.dtype, device=sigmas.device)
         image = torch.empty(N, 3, dtype=sigmas.dtype, device=sigmas.device)
+        uncertainty_mean = torch.empty(N, 1, dtype=sigmas.dtype, device=sigmas.device)
 
-        get_backend().composite_rays_train_forward(sigmas, rgbs, ts, rays, M, N, T_thresh, alpha_mode, weights, weights_sum, depth, image)
+        get_backend().composite_rays_train_forward(sigmas, rgbs, uncertainty, ts, rays, M, N, T_thresh, alpha_mode, weights, weights_sum, depth, image, uncertainty_mean)
 
-        ctx.save_for_backward(sigmas, rgbs, ts, rays, weights_sum, depth, image)
+        ctx.save_for_backward(sigmas, rgbs, ts, rays, weights_sum, depth, image, uncertainty)
         ctx.dims = [M, N, T_thresh, alpha_mode]
 
-        return weights, weights_sum, depth, image
+        return weights, weights_sum, depth, image, uncertainty_mean
     
     @staticmethod
     @custom_bwd
-    def backward(ctx, grad_weights, grad_weights_sum, grad_depth, grad_image):
+    def backward(ctx, grad_weights, grad_weights_sum, grad_depth, grad_image, grad_uncertainty_mean):
         
         grad_weights = grad_weights.contiguous()
         grad_weights_sum = grad_weights_sum.contiguous()
         grad_depth = grad_depth.contiguous()
         grad_image = grad_image.contiguous()
 
-        sigmas, rgbs, ts, rays, weights_sum, depth, image = ctx.saved_tensors
+        sigmas, rgbs, ts, rays, weights_sum, depth, image, uncertainty = ctx.saved_tensors
         M, N, T_thresh, alpha_mode = ctx.dims
    
         grad_sigmas = torch.zeros_like(sigmas)
         grad_rgbs = torch.zeros_like(rgbs)
+        grad_uncertainty = torch.zeros_like(uncertainty)
 
-        get_backend().composite_rays_train_backward(grad_weights, grad_weights_sum, grad_depth, grad_image, sigmas, rgbs, ts, rays, weights_sum, depth, image, M, N, T_thresh, alpha_mode, grad_sigmas, grad_rgbs)
+        get_backend().composite_rays_train_backward(
+            grad_weights,
+            grad_weights_sum,
+            grad_depth,
+            grad_image,
+            grad_uncertainty_mean,
+            sigmas, rgbs, ts, rays,
+            weights_sum,
+            depth, image, M, N,
+            T_thresh, alpha_mode,
+            grad_sigmas,
+            grad_rgbs,
+            grad_uncertainty)
 
-        return grad_sigmas, grad_rgbs, None, None, None, None
+        return grad_sigmas, grad_rgbs, grad_uncertainty, None, None, None, None
 
 
 composite_rays_train = _composite_rays_train.apply

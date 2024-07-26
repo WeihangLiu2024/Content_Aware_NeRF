@@ -10,6 +10,7 @@ import tensorboardX
 import numpy as np
 import scipy.io as io
 # import hdf5storage as io
+import weakref
 
 import time
 
@@ -422,8 +423,20 @@ class Trainer(object):
         if self.opt.save_grad:
             self.hash_grad = []
 
-        self.optimizer = optimizer
-        self.lr_scheduler = lr_scheduler
+        # optimizer
+        self.param = []
+        self.param_uncertainty = []
+        for name, param in self.model.named_parameters():
+            if 'uncertainty' in name:
+                self.param_uncertainty.append(param)
+            else:
+                self.param.append(param)
+
+        self.optimizer = optimizer(self.param)
+        self.lr_scheduler = lr_scheduler(self.optimizer)
+        if self.opt.alpha:
+            self.optimizer_uncertainty = optimizer(self.param_uncertainty)
+            self.lr_scheduler_uncertainty = lr_scheduler(self.optimizer_uncertainty)
 
         if ema_decay is not None:
             self.ema = ExponentialMovingAverage(self.model.parameters(), decay=ema_decay)
@@ -535,13 +548,14 @@ class Trainer(object):
         # MSE loss
         pred_rgb = outputs['image']
         loss = self.criterion(pred_rgb, gt_rgb).mean(-1) # [N, 3] --> [N]
-    
-        loss = loss.mean()
 
         # content-aware reg
         if self.opt.alpha:
-            alpha = outputs['alpha_mean']
-            loss = loss + 1e-6 * alpha
+            # alpha_reg = (loss - outputs['alpha'])**2
+            loss_alpha = self.criterion(loss.detach(), outputs['alpha'].squeeze(dim=1))
+            loss_alpha = loss_alpha.mean()
+
+        loss = loss.mean()
 
         # extra loss
         if 'proposal_loss' in outputs and self.opt.lambda_proposal > 0:
@@ -558,7 +572,10 @@ class Trainer(object):
         # adaptive num_rays
         if self.opt.adaptive_num_rays:
             self.opt.num_rays = int(round((self.opt.num_points / outputs['num_points']) * self.opt.num_rays))
-            
+
+        # content-aware reg
+        if self.opt.alpha:
+            return pred_rgb, gt_rgb, loss, loss_alpha
         return pred_rgb, gt_rgb, loss
 
     def post_train_step(self):
@@ -674,6 +691,10 @@ class Trainer(object):
                 lr = self.optimizer.param_groups[0]['lr']
                 self.optimizer = optim.Adam(self.model.get_params(lr), eps=1e-15)
                 self.lr_scheduler.optimizer = self.optimizer
+                if self.ema is not None:
+                    self.ema.shadow_params[0] = self.hash_table.clone().detach()
+                    self.ema._params_refs[0] = weakref.ref(self.hash_table)
+                    # self.ema.collected_params[0] = self.hash_table.clone()
                 print("Update hash table size:", self.hash_table.shape[0])
 
                 # self.optimizer.param_groups[0]['params'] = self.model.encoder.embeddings
@@ -685,7 +706,8 @@ class Trainer(object):
 
             if self.epoch % self.eval_interval == 0:
                 self.evaluate_one_epoch(valid_loader)
-                self.save_checkpoint(full=False, best=True)
+                # self.save_checkpoint(full=False, best=True)
+                self.save_checkpoint(full=True, best=False)
 
         # clear backup when training is finished.
         if hasattr(self.model.encoder, 'backup'):
@@ -901,10 +923,18 @@ class Trainer(object):
             self.local_step += 1
             self.global_step += 1
 
-            self.optimizer.zero_grad()    
 
-            preds, truths, loss_net = self.train_step(data)
-            
+            if self.opt.alpha:
+                preds, truths, loss_net, loss_uncertainty = self.train_step(data)
+                self.optimizer_uncertainty.zero_grad()
+                self.scaler.scale(loss_uncertainty).backward(retain_graph=True)
+                self.scaler.unscale_(self.optimizer_uncertainty)
+                self.scaler.step(self.optimizer_uncertainty)
+            else:
+                preds, truths, loss_net = self.train_step(data)
+
+            self.optimizer.zero_grad()
+
             loss = loss_net
          
             self.scaler.scale(loss).backward()
@@ -1076,7 +1106,10 @@ class Trainer(object):
         total_loss = 0
         self.model.train()
         for data in loader:
-            preds, truths, loss_net = self.train_step(data)
+            if self.opt.alpha:
+                preds, truths, loss_net, _ = self.train_step(data)
+            else:
+                preds, truths, loss_net = self.train_step(data)
             loss_val = loss_net.item()
             total_loss += loss_val
         self.model.eval()
@@ -1176,6 +1209,7 @@ class Trainer(object):
 
         if self.ema is not None and 'ema' in checkpoint_dict:
             try:
+                self.ema._params_refs[0] = weakref.ref(self.model.encoder.embeddings)
                 self.ema.load_state_dict(checkpoint_dict['ema'])
                 self.log("[INFO] loaded EMA.")
             except:
@@ -1274,7 +1308,7 @@ class QatTrainer(object):
         self.loss_fp = loss_fp
         if target is not None:
             self.target = target
-            loss_metric = 10 ** (-1 * self.target / 10)
+            loss_metric = 0.5 * 10 ** (-1 * self.target / 10)  # multiply 0.5 due to SmoothL1Loss
             if self.loss_fp != 0:  # the evaluation result is a valid value
                 self.loss_metric = max(loss_metric, self.loss_fp)
         else:
