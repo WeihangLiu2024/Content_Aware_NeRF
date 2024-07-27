@@ -571,7 +571,7 @@ class Trainer(object):
 
         # adaptive num_rays
         if self.opt.adaptive_num_rays:
-            self.opt.num_rays = int(round((self.opt.num_points / outputs['num_points']) * self.opt.num_rays))
+            self.opt.num_rays = int(round( max(min(self.opt.num_points / outputs['num_points'], 1.3),0.2) * self.opt.num_rays))
 
         # content-aware reg
         if self.opt.alpha:
@@ -695,7 +695,7 @@ class Trainer(object):
                     self.ema.shadow_params[0] = self.hash_table.clone().detach()
                     self.ema._params_refs[0] = weakref.ref(self.hash_table)
                     # self.ema.collected_params[0] = self.hash_table.clone()
-                print("Update hash table size:", self.hash_table.shape[0])
+                self.log("Update hash table size:", self.hash_table.shape[0])
 
                 # self.optimizer.param_groups[0]['params'] = self.model.encoder.embeddings
 

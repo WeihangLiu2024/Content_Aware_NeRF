@@ -327,7 +327,7 @@ class QsigmaNet(nn.Module):
         self.bit_width_init = bit_width_init
         self.sigma_net = copy.deepcopy(sigma_net)
         self.Qsigma_net = []
-        self.Qsigma_act = Qexp(bw_qo=24)   # TODO: exp is hard to quantized with low bit-width
+        self.Qsigma_act = Qexp(bw_qo=32)   # TODO: exp is hard to quantized with low bit-width
         # self.Qsigma_act = Qexp(bw_qo=bit_width_init)  # TODO: exp is hard to quantized with low bit-width
         self.add_module("Qsigma_act", self.Qsigma_act)
         self.case_num = 0

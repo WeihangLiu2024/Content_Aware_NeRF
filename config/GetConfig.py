@@ -181,8 +181,8 @@ def get_config():
         opt.background = 'random'
         opt.enable_cam_center = False
         opt.dt_gamma = 0
-        if not opt.selfbound:
-            opt.bound = 1.0
+        # if not opt.selfbound:
+        #     opt.bound = 1.0
         if opt.scale == -1:
             opt.scale = 0.8
 

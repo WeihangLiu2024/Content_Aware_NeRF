@@ -7,6 +7,7 @@ while [[ "$#" -gt 0 ]]; do
         -f|--format) format="$2"; shift ;;
         -q|--quantization) quantization="$2"; shift;;
         -a|--alpha) alpha="$2"; shift;;
+        -b|--bound) aabb="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -16,15 +17,15 @@ time=$(date "+%Y-%m-%d_%H:%M:%S")
 
 if [ "$quantization" = "MDL" ]; then
   if [ "$alpha" = "True" ]; then
-    python main.py data/${data} --workspace workspace/${logdir}/${data}/${time} -O -MDL --data_format ${format} --alpha
+    python main.py data/${data} --workspace workspace/${logdir}/${data}/${time} -O -MDL --data_format ${format} --bound ${aabb} --alpha
   else
-    python main.py data/${data} --workspace workspace/${logdir}/${data}/${time} -O -MDL --data_format ${format}
+    python main.py data/${data} --workspace workspace/${logdir}/${data}/${time} -O -MDL --data_format ${format} --bound ${aabb}
   fi
 elif [ "$quantization" = 'MGL' ]; then
   if [ "$alpha" = "True" ]; then
-    python main.py data/${data} --workspace workspace/CA_final/nerf_synthetic/chair -O -MGL --data_format ${format} --alpha
+    python main.py data/${data} --workspace workspace/${logdir}/${data}/${time} -O -MGL --data_format ${format} --bound ${aabb} --alpha
   else
-    python main.py data/${data} --workspace workspace/CA_final/nerf_synthetic/chair -O -MGL --data_format ${format}
+    python main.py data/${data} --workspace workspace/${logdir}/${data}/${time} -O -MGL --data_format ${format} --bound ${aabb}
   fi
 fi
 
