@@ -420,8 +420,6 @@ class Trainer(object):
         # record the gradients to adjust the hash table size
         self.hash_grad = []
         # self.hash_grad = torch.zeros(opt.iters, self.hash_table.shape[0], self.hash_table.shape[1])
-        if self.opt.save_grad:
-            self.hash_grad = []
 
         # optimizer
         self.param = []
@@ -572,6 +570,7 @@ class Trainer(object):
         # adaptive num_rays
         if self.opt.adaptive_num_rays:
             self.opt.num_rays = int(round( max(min(self.opt.num_points / outputs['num_points'], 1.3),0.2) * self.opt.num_rays))
+            # print(self.opt.num_rays)
 
         # content-aware reg
         if self.opt.alpha:
@@ -675,12 +674,13 @@ class Trainer(object):
             # ========== hash table operation ==========
             # save hash grad as reference
             if (epoch < self.opt.update_hash) and ((epoch + 1) % self.opt.hash_interval == 0):
-                tensor_hash = torch.stack(self.hash_grad)
-                tensor_hash_sum = torch.sum(torch.abs(tensor_hash), dim=0)
-                if self.opt.save_grad:
-                    tensor_hash = np.array(tensor_hash.cpu())
-                    io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
-                               {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.array(tensor_hash_sum.cpu())} )
+                # tensor_hash = torch.stack(self.hash_grad)
+                # tensor_hash_sum = torch.sum(torch.abs(tensor_hash), dim=0)
+                tensor_hash_sum = torch.stack(self.hash_grad).sum()
+                # if self.opt.save_grad: # invalid temporarily
+                #     tensor_hash = np.array(tensor_hash.cpu())
+                #     io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
+                #                {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.array(tensor_hash_sum.cpu())} )
 
                 self.model.adjust_hash(tensor_hash_sum)
 
@@ -944,7 +944,10 @@ class Trainer(object):
             # record hash grad every xxx epoch
             # self.hash_grad.append(self.hash_table.grad.detach().clone())
             if (epoch_index < self.opt.update_hash) and ((epoch_index+1) % self.opt.hash_interval == 0):
-                self.hash_grad.append(self.hash_table.grad)
+                # self.hash_grad.append(self.hash_table.grad)
+                nonzero_indices = torch.nonzero(self.hash_table.grad)
+                abs_sum = torch.abs(self.hash_table.grad[nonzero_indices[:, 0], nonzero_indices[:, 1]]).sum()
+                self.hash_grad.append(abs_sum)
 
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -1103,7 +1106,7 @@ class Trainer(object):
 
     def evaluate_on_trainset(self, loader):
         # get bitwidth learning reference loss_fp
-        total_loss = 0
+        total_loss = 1  # big value
         self.model.train()
         for data in loader:
             if self.opt.alpha:
@@ -1111,9 +1114,11 @@ class Trainer(object):
             else:
                 preds, truths, loss_net = self.train_step(data)
             loss_val = loss_net.item()
-            total_loss += loss_val
+            # total_loss += loss_val
+            total_loss = min(total_loss, loss_net)
         self.model.eval()
-        return total_loss / len(loader)
+        # return total_loss / len(loader)
+        return total_loss
 
     def save_checkpoint(self, name=None, full=False, best=False, remove_old=True):
 
@@ -1309,10 +1314,10 @@ class QatTrainer(object):
         if target is not None:
             self.target = target
             loss_metric = 0.5 * 10 ** (-1 * self.target / 10)  # multiply 0.5 due to SmoothL1Loss
-            if self.loss_fp != 0:  # the evaluation result is a valid value
+            if self.loss_fp is not None:  # the evaluation result is a valid value
                 self.loss_metric = max(loss_metric, self.loss_fp)
         else:
-            assert loss_fp, "one of target PSNR or previous loss should be provided"
+            assert (loss_fp is not None), "one of target PSNR or previous loss should be provided"
             self.loss_metric = self.loss_fp
 
         # try out torch 2.0

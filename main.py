@@ -63,8 +63,7 @@ if __name__ == '__main__':
         loss_fp = 0  # final loss with full-precision model; loss on test_dataset (if not exist, on val_dataset)
                      # this value serves as reference for bit-width learning in QAT
         # optimizer = optim.Adam(model.get_params(opt.lr), eps=1e-15)
-        optimizer = lambda param: optim.Adam(params=param, lr=opt.lr,
-                                                 betas=(0.9, 0.99), eps=1e-15)
+        optimizer = lambda param: optim.Adam(params=param, lr=opt.lr, eps=1e-15)
 
         train_loader = NeRFDataset(opt, device=device, type=opt.train_split).dataloader()
         batch_num = len(train_loader)
@@ -129,6 +128,8 @@ if __name__ == '__main__':
                 # optimizer = lambda param: optim.Adam(params=param, lr=1e-2, weight_decay=5e-4)  # naive adam
                 optimizer_qat = lambda param: optim.Adam(params=param, lr=opt.lr * opt.qat_lr,
                                                          betas=(0.9, 0.99), eps=1e-15)
+                # optimizer_qat = lambda param: optim.Adam(params=param, lr=opt.lr * opt.qat_lr, eps=1e-15)
+
                 scheduler_qat = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer,
                                                                               lambda iter: 0.1 ** min(
                                                                                            iter / (opt.qat_iteration-opt.lr_schedule),1))

@@ -171,8 +171,8 @@ def get_config():
     if opt.data_format == 'colmap':  # default setting
         opt.background = 'random'
         opt.enable_cam_center = True
-        if not opt.selfbound:
-            opt.bound = 8.0
+        # if not opt.selfbound:
+        #     opt.bound = 8.0
         opt.dt_gamma = 0
         opt.random_image_batch = True
         opt.enable_cam_near_far = True
