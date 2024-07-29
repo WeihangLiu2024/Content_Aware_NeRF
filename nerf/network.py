@@ -333,13 +333,13 @@ class NeRFNetwork(NeRFRenderer):
 
         self.to('cuda')
 
-    def adjust_hash(self, gradient_sum, threshold_up=8e-7, threshold_down=2e-7):
+    def adjust_hash(self, gradient_sum, optimizer, scheduler, threshold_up=8e-7, threshold_down=2e-7):
         # gradient: accumulated gradients. [s0, C] -> [number of params, feature dim]
         # threshold: pre-defined threshold. [up, down] -> [scale up threshold, scale down threshold]
         # gradient_mean = torch.mean(gradient)
         dim = self.encoder.embeddings.shape
         gradient_mean = gradient_sum / (dim[0] * dim[1])
         if gradient_mean > threshold_up:
-            self.encoder.size_up()
+            self.encoder.size_up(optimizer, scheduler)
         elif gradient_mean < threshold_down:
-            self.encoder.size_down()
+            self.encoder.size_down(optimizer, scheduler)

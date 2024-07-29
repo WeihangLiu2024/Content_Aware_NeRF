@@ -223,7 +223,7 @@ class GridEncoder(nn.Module):
 
         _backend.grad_weight_decay(self.embeddings, self.embeddings.grad, self.offsets, weight, B, C, L)
 
-    def size_up(self):
+    def size_up(self, optimizer, scheduler):
         # scale up the hash table size
         # if self.backup exist, use it as initializations of newly added params
         std = 1e-4
@@ -239,6 +239,10 @@ class GridEncoder(nn.Module):
             offsets.append(offset)
             offset += params_in_level
         offsets.append(offset)
+
+        # get related info in optimizer
+        temp = optimizer.state
+        optimizer_embed, optimizer_state = next(iter(temp.items()))
 
         embedding = self.embeddings.data
         for idx in range(len(offsets)):
@@ -257,13 +261,37 @@ class GridEncoder(nn.Module):
                 embedding[self.offsets[idx]:, :],
             ),dim=0)
 
+            # update optimizer
+            optimizer_state['exp_avg'] = torch.cat((
+                embedding[:self.offsets[idx],:],
+                torch.zeros([new_size, self.level_dim], device='cuda'),
+                embedding[self.offsets[idx]:, :],
+            ),dim=0)
+            optimizer_state['exp_avg_sq'] = torch.cat((
+                embedding[:self.offsets[idx],:],
+                torch.zeros([new_size, self.level_dim], device='cuda'),
+                embedding[self.offsets[idx]:, :],
+            ),dim=0)
+
             self.offsets[idx:] = self.offsets[idx:] + new_size
         
         self.embeddings = nn.Parameter(embedding)
         self.n_params = self.offsets[-1] * self.level_dim
 
+        # update corresponding optimizer & scheduler
+        # 1) update optimizer.state.
+        updated_temp = {self.embeddings: optimizer_state}
+        for key, value in temp.items():
+            if key != optimizer_embed:
+                updated_temp[key] = value
+        optimizer.state = updated_temp
+        # 2) update optimizer.param_groups
+        optimizer.param_groups[0]['params'][0] = self.embeddings
+        # 3) update scheduler
+        scheduler.optimizer = optimizer
 
-    def size_down(self):
+
+    def size_down(self, optimizer, scheduler):
         # scale down the hash table size, the deleted part are saved as backup
         offsets = []
         offset = 0
@@ -278,6 +306,10 @@ class GridEncoder(nn.Module):
             offset += params_in_level
         offsets.append(offset)
 
+        # get related info in optimizer
+        temp = optimizer.state
+        optimizer_embed, optimizer_state = next(iter(temp.items()))
+
         embedding = self.embeddings.data
         for idx in range(len(offsets)):
             new_size = self.offsets[idx] - offsets[idx]
@@ -289,6 +321,16 @@ class GridEncoder(nn.Module):
                 embedding.data[self.offsets[idx]:, :],
             ),dim=0)
 
+            # update optimizer
+            optimizer_state['exp_avg'] = torch.cat((
+                optimizer_state['exp_avg'].data[:offsets[idx],:],
+                optimizer_state['exp_avg'].data[self.offsets[idx]:, :],
+            ),dim=0)
+            optimizer_state['exp_avg_sq'] = torch.cat((
+                optimizer_state['exp_avg_sq'].data[:offsets[idx],:],
+                optimizer_state['exp_avg_sq'].data[self.offsets[idx]:, :],
+            ),dim=0)
+
             # self.embeddings.data = torch.cat((
             #     self.embeddings.data[:offsets[idx],:],
             #     self.embeddings.data[self.offsets[idx]:, :],
@@ -298,3 +340,15 @@ class GridEncoder(nn.Module):
 
         self.embeddings = nn.Parameter(embedding)
         self.n_params = self.offsets[-1] * self.level_dim
+
+        # update corresponding optimizer & scheduler
+        # 1) update optimizer.state.
+        updated_temp = {self.embeddings: optimizer_state}
+        for key, value in temp.items():
+            if key != optimizer_embed:
+                updated_temp[key] = value
+        optimizer.state = updated_temp
+        # 2) update optimizer.param_groups
+        optimizer.param_groups[0]['params'][0] = self.embeddings
+        # 3) update scheduler
+        scheduler.optimizer = optimizer

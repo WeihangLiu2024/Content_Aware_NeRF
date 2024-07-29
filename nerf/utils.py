@@ -574,8 +574,8 @@ class Trainer(object):
 
         # content-aware reg
         if self.opt.alpha:
-            return pred_rgb, gt_rgb, loss, loss_alpha
-        return pred_rgb, gt_rgb, loss
+            return pred_rgb, gt_rgb, loss, loss_alpha, outputs['num_points']
+        return pred_rgb, gt_rgb, loss, outputs['num_points']
 
     def post_train_step(self):
 
@@ -674,23 +674,22 @@ class Trainer(object):
             # ========== hash table operation ==========
             # save hash grad as reference
             if (epoch < self.opt.update_hash) and ((epoch + 1) % self.opt.hash_interval == 0):
-                # tensor_hash = torch.stack(self.hash_grad)
-                # tensor_hash_sum = torch.sum(torch.abs(tensor_hash), dim=0)
-                tensor_hash_sum = torch.stack(self.hash_grad).sum()
-                # if self.opt.save_grad: # invalid temporarily
+                # average over iterations
+                tensor_hash_mean = torch.mean(torch.stack(self.hash_grad))
+                self.log(f'average hash gradient over points and iterations in one epoch: {tensor_hash_mean}')
+
+                # ============================== invalid temporarily =====================================
+                # if self.opt.save_grad:
                 #     tensor_hash = np.array(tensor_hash.cpu())
                 #     io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
                 #                {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.array(tensor_hash_sum.cpu())} )
-
-                self.model.adjust_hash(tensor_hash_sum)
+                # self.model.adjust_hash(tensor_hash_sum, self.optimizer, self.lr_scheduler)
+                # ========================================================================================
 
                 # re-initialize training status
                 for name, param in self.model.encoder.named_parameters():
                     self.hash_table = param
 
-                lr = self.optimizer.param_groups[0]['lr']
-                self.optimizer = optim.Adam(self.model.get_params(lr), eps=1e-15)
-                self.lr_scheduler.optimizer = self.optimizer
                 if self.ema is not None:
                     self.ema.shadow_params[0] = self.hash_table.clone().detach()
                     self.ema._params_refs[0] = weakref.ref(self.hash_table)
@@ -923,17 +922,15 @@ class Trainer(object):
             self.local_step += 1
             self.global_step += 1
 
-
+            self.optimizer.zero_grad()
             if self.opt.alpha:
-                preds, truths, loss_net, loss_uncertainty = self.train_step(data)
                 self.optimizer_uncertainty.zero_grad()
+                preds, truths, loss_net, loss_uncertainty, num_points = self.train_step(data)
                 self.scaler.scale(loss_uncertainty).backward(retain_graph=True)
                 self.scaler.unscale_(self.optimizer_uncertainty)
                 self.scaler.step(self.optimizer_uncertainty)
             else:
-                preds, truths, loss_net = self.train_step(data)
-
-            self.optimizer.zero_grad()
+                preds, truths, loss_net, num_points = self.train_step(data)
 
             loss = loss_net
          
@@ -946,8 +943,9 @@ class Trainer(object):
             if (epoch_index < self.opt.update_hash) and ((epoch_index+1) % self.opt.hash_interval == 0):
                 # self.hash_grad.append(self.hash_table.grad)
                 nonzero_indices = torch.nonzero(self.hash_table.grad)
-                abs_sum = torch.abs(self.hash_table.grad[nonzero_indices[:, 0], nonzero_indices[:, 1]]).sum()
-                self.hash_grad.append(abs_sum)
+                # average over points
+                abs_mean = torch.abs(self.hash_table.grad[nonzero_indices[:, 0], nonzero_indices[:, 1]]).sum() / num_points
+                self.hash_grad.append(abs_mean)
 
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -1115,7 +1113,7 @@ class Trainer(object):
                 preds, truths, loss_net = self.train_step(data)
             loss_val = loss_net.item()
             # total_loss += loss_val
-            total_loss = min(total_loss, loss_net)
+            total_loss = min(total_loss, loss_val)
         self.model.eval()
         # return total_loss / len(loader)
         return total_loss
