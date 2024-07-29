@@ -1108,9 +1108,9 @@ class Trainer(object):
         self.model.train()
         for data in loader:
             if self.opt.alpha:
-                preds, truths, loss_net, _ = self.train_step(data)
+                preds, truths, loss_net, _, _ = self.train_step(data)
             else:
-                preds, truths, loss_net = self.train_step(data)
+                preds, truths, loss_net, _ = self.train_step(data)
             loss_val = loss_net.item()
             # total_loss += loss_val
             total_loss = min(total_loss, loss_val)
