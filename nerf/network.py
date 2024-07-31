@@ -134,13 +134,15 @@ class NeRFNetwork(NeRFRenderer):
             if self.training and kwargs["step"] < 10000:
             # if False: # debug
                 # complex point processing
-                h_relu = self.color_net[1](h)
+                h = self.color_net[1](h)
+                h_res = h.clone()
+
                 for l in range(2, len(self.color_net)-1):
-                    h = self.color_net[l](h_relu)
-                # final blend
-                # h = alpha * h + (1-alpha) * h_relu
+                    h = self.color_net[l](h)
+
                 # residual connection
-                h = 0.5 * h + 0.5 * h_relu
+                h = 0.5 * h + 0.5 * h_res
+
                 h = self.color_net[-1](h)  # final decode
                 # sigmoid activation for rgb
                 color = torch.sigmoid(h)
@@ -155,6 +157,9 @@ class NeRFNetwork(NeRFRenderer):
                 if not self.training:
                     self.alpha_sum += torch.sum(~torch.isnan(alpha))
                     self.alpha_complex += complex_mask.sum()
+                # # ====== debug ======
+                # complex_mask = torch.ones_like(alpha, dtype=torch.bool).squeeze()
+                # ===================
                 h_relu = self.color_net[1](h).clone()  # here clone() is necessary to avoid "gradient computation error due tp inplace operation", but why?
                 # complex point processing
                 h = h_relu[complex_mask,:]
@@ -333,12 +338,9 @@ class NeRFNetwork(NeRFRenderer):
 
         self.to('cuda')
 
-    def adjust_hash(self, gradient_sum, optimizer, scheduler, threshold_up=8e-7, threshold_down=2e-7):
+    def adjust_hash(self, gradient_mean, optimizer, scheduler, threshold_up=1.5e-8, threshold_down=2e-9):
         # gradient: accumulated gradients. [s0, C] -> [number of params, feature dim]
         # threshold: pre-defined threshold. [up, down] -> [scale up threshold, scale down threshold]
-        # gradient_mean = torch.mean(gradient)
-        dim = self.encoder.embeddings.shape
-        gradient_mean = gradient_sum / (dim[0] * dim[1])
         if gradient_mean > threshold_up:
             self.encoder.size_up(optimizer, scheduler)
         elif gradient_mean < threshold_down:

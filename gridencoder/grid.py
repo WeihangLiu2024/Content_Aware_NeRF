@@ -345,7 +345,7 @@ class GridEncoder(nn.Module):
         # 1) update optimizer.state.
         updated_temp = {self.embeddings: optimizer_state}
         for key, value in temp.items():
-            if key != optimizer_embed:
+            if key.shape != optimizer_embed.shape:
                 updated_temp[key] = value
         optimizer.state = updated_temp
         # 2) update optimizer.param_groups

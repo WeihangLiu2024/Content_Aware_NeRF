@@ -676,15 +676,15 @@ class Trainer(object):
             if (epoch < self.opt.update_hash) and ((epoch + 1) % self.opt.hash_interval == 0):
                 # average over iterations
                 tensor_hash_mean = torch.mean(torch.stack(self.hash_grad))
-                self.log(f'average hash gradient over points and iterations in one epoch: {tensor_hash_mean}')
+                # self.log(f'average hash gradient over grids and iterations in one epoch: {tensor_hash_mean}')
 
                 # ============================== invalid temporarily =====================================
                 # if self.opt.save_grad:
                 #     tensor_hash = np.array(tensor_hash.cpu())
                 #     io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
                 #                {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.array(tensor_hash_sum.cpu())} )
-                # self.model.adjust_hash(tensor_hash_sum, self.optimizer, self.lr_scheduler)
                 # ========================================================================================
+                self.model.adjust_hash(tensor_hash_mean, self.optimizer, self.lr_scheduler)
 
                 # re-initialize training status
                 for name, param in self.model.encoder.named_parameters():
@@ -922,7 +922,7 @@ class Trainer(object):
             self.local_step += 1
             self.global_step += 1
 
-            self.optimizer.zero_grad()
+            # self.optimizer.zero_grad()
             if self.opt.alpha:
                 self.optimizer_uncertainty.zero_grad()
                 preds, truths, loss_net, loss_uncertainty, num_points = self.train_step(data)
@@ -933,7 +933,15 @@ class Trainer(object):
                 preds, truths, loss_net, num_points = self.train_step(data)
 
             loss = loss_net
-         
+
+            ## ======== debug visualize computation graph ========
+            # from torchviz import make_dot
+            # dot = make_dot(loss, params=dict(self.model.named_parameters()))
+            # dot.format = 'png'
+            # dot.render("model_graph")
+            ## ===================================================
+
+            self.optimizer.zero_grad()
             self.scaler.scale(loss).backward()
 
             self.post_train_step() # for TV loss...
@@ -943,8 +951,14 @@ class Trainer(object):
             if (epoch_index < self.opt.update_hash) and ((epoch_index+1) % self.opt.hash_interval == 0):
                 # self.hash_grad.append(self.hash_table.grad)
                 nonzero_indices = torch.nonzero(self.hash_table.grad)
-                # average over points
-                abs_mean = torch.abs(self.hash_table.grad[nonzero_indices[:, 0], nonzero_indices[:, 1]]).sum() / num_points
+
+                # choice 1: average over points
+                # abs_mean = torch.abs(self.hash_table.grad[nonzero_indices[:, 0], nonzero_indices[:, 1]]).sum() / num_points
+                # choice 2: average over all hash table
+                dim = self.model.encoder.embeddings.shape
+                abs_mean = torch.abs(
+                    self.hash_table.grad[nonzero_indices[:, 0], nonzero_indices[:, 1]]).sum() / (dim[0] * dim[1])
+
                 self.hash_grad.append(abs_mean)
 
             self.scaler.step(self.optimizer)
