@@ -3,10 +3,10 @@ import numpy as np
 import os
 import argparse
 
-
+# ref: https://docs.opencv.org/4.x/d2/d2c/tutorial_sobel_derivatives.html
 def fsobel_gradient(img):
     # 计算x方向和y方向上的梯度
-    sobelx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
+    sobelx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3) # kernel [-1, 0, 1; -2, 0, 2; -1, 0, 1]
     sobely = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
     # 计算梯度大小和方向
     gradient_magnitude = np.sqrt(sobelx ** 2 + sobely ** 2) / 4  # 为了在数值上和ffour保持一致
@@ -18,7 +18,7 @@ def fsobel_gradient(img):
 
 def ffour_neighbor_gradient(img):
     # 使用像素周围上下左右四个像素的差异来估计梯度
-    dx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=1)
+    dx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=1)  # kernel [-1,0,1]
     dy = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=1)
     gradient_magnitude = np.sqrt(dx ** 2 + dy ** 2)
     average_gradient = np.mean(gradient_magnitude)
