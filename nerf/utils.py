@@ -808,7 +808,7 @@ class Trainer(object):
 
             self.optimizer.zero_grad()
 
-            preds, truths, loss_net = self.train_step(data)
+            preds, truths, loss_net, _ = self.train_step(data)
             
             loss = loss_net
          
