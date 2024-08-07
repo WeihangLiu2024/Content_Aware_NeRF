@@ -38,7 +38,7 @@ if __name__ == '__main__':
     total_four_neighbor_gradient = 0
     # 遍历文件夹中所有图片
     for filename in os.listdir(img_folder):
-        if filename.endswith('.JPG'):  # 假设只有jpg格式的图片
+        if filename.endswith('.JPG') or filename.endswith('.png') :  # 假设只有jpg格式的图片
             img_path = os.path.join(img_folder, filename)
             img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
             if img.shape[2] == 4:
