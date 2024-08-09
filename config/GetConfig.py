@@ -24,7 +24,7 @@ def get_config():
                         help="interp for interpolation, circle for circular camera")
 
     ### dataset options
-    parser.add_argument('--data_format', type=str, default='colmap', choices=['nerf', 'colmap', 'dtu'])
+    parser.add_argument('--data_format', type=str, default='colmap', choices=['nerf', 'colmap', 'dtu', 'nsvf', 'tank'])
     parser.add_argument('--train_split', type=str, default='train', choices=['train', 'trainval', 'all'])
     parser.add_argument('--preload', action='store_true',
                         help="preload all data into GPU, accelerate training but use more GPU memory")
@@ -178,6 +178,15 @@ def get_config():
         opt.enable_cam_near_far = True
 
     if opt.data_format == 'nerf':  # default setting
+        opt.background = 'random'
+        opt.enable_cam_center = False
+        opt.dt_gamma = 0
+        # if not opt.selfbound:
+        #     opt.bound = 1.0
+        if opt.scale == -1:
+            opt.scale = 0.8
+    
+    if opt.data_format == 'nsvf' or opt.data_format == 'tank':  # default setting
         opt.background = 'random'
         opt.enable_cam_center = False
         opt.dt_gamma = 0

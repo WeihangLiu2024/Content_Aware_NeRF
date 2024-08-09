@@ -1,0 +1,12 @@
+data/
+workspace/
+**/__pycache__/**
+*.pyc
+.vscode/
+*.ipynb_checkpoints
+*__pycache__
+test.sh
+config/GetConfig_test.py
+test_data_loader.ipynb
+test.ipynb
+test_calBitOps.ipynb

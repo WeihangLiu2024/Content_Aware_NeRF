@@ -27,6 +27,8 @@ if __name__ == '__main__':
         from nerf.colmap_provider import ColmapDataset as NeRFDataset
     elif opt.data_format == 'dtu':  # [not use yet]
         from nerf.dtu_provider import NeRFDataset
+    elif opt.data_format == 'nsvf' or opt.data_format == 'tank':
+        from nerf.NsvfAndTanks.provider import NeRFDataset
     else: # nerf
         from nerf.provider import NeRFDataset
     seed_everything(opt.seed)
