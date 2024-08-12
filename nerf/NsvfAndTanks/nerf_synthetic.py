@@ -17,7 +17,7 @@ Copyright (c) 2022 Ruilong Li, UC Berkeley.
 import collections
 import json
 import os
-
+from tqdm import tqdm
 import imageio.v2 as imageio
 import numpy as np
 import torch
@@ -44,8 +44,8 @@ def _load_renderings(root_fp: str, subject_id: str, split: str):
         meta = json.load(fp)
     images = []
     camtoworlds = []
-
-    for i in range(len(meta["frames"])):
+    print('dataset loading...')
+    for i in tqdm(range(len(meta["frames"]))):
         frame = meta["frames"][i]
         fname = os.path.join(data_dir, frame["file_path"] + ".png")
         rgba = imageio.imread(fname)

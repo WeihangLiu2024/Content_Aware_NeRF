@@ -1,3 +1,8 @@
+"""
+Simply transform the NSVF and TanksAndTemple data loaders in the BiRF(https://github.com/SAITPublic/BiRF)
+into usable data loaders for this project
+"""
+
 import os
 import cv2
 import glob
@@ -12,6 +17,17 @@ import torch
 from torch.utils.data import DataLoader
 
 from ..utils import get_rays, create_dodecahedron_cameras, linear_to_srgb
+
+
+def convert(c2w:torch.tensor):
+    transform_matrix = torch.tensor([
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ], device=c2w.device, dtype=torch.float32)
+    c2w = torch.mm(transform_matrix, c2w)
+    return c2w
 
 
 def load_dataset(
@@ -67,7 +83,7 @@ class NeRFDataset:
             self.scale = 1
             
         self.training = self.type in ['train', 'all', 'trainval']
-        # data_loader
+        # data_loader frome BiRF 
         data_root_fp, scene = os.path.split(self.opt.path)
         train_dataset_kwargs = {}
         render_n_samples = self.opt.num_rays
@@ -85,6 +101,7 @@ class NeRFDataset:
         for i in range(self.poses.shape[0]):
             pose = self.poses[i]
             pose[:3, 3] = pose[:3, 3] * 0.8 + torch.tensor([0, 0, 0]).to('cuda')
+            pose = convert(pose)
             self.poses[i] = pose
         self.focal = loader.focal
         self.H = loader.HEIGHT
@@ -97,6 +114,8 @@ class NeRFDataset:
         self.radius = self.poses[:, :3, 3].norm(dim=-1).mean(0).item()
         self.near = self.opt.min_near
         self.far = 1000 # infinite
+        # self.near = loader.NEAR
+        # self.far = loader.FAR
         y = self.H / (2.0 * fl_y)
         aspect = self.W / self.H
         self.projection = np.array([[1/(y*aspect), 0, 0, 0], 
@@ -112,7 +131,8 @@ class NeRFDataset:
         # visualize_poses(dodecahedron_poses, bound=self.opt.bound, points=self.pts3d)
         self.dodecahedron_poses = torch.from_numpy(dodecahedron_poses.astype(np.float32)) # [N, 4, 4]
         self.dodecahedron_mvps = self.projection.unsqueeze(0) @ torch.inverse(self.dodecahedron_poses).to(self.device)
-        # TODO: 现在的情况是无论参数是什么，都会preload
+        # TODO
+        # 现在的情况是无论参数是什么，都会preload
         if self.preload:
             self.poses = self.poses.to(self.device)
             if self.images is not None and len(self.images):

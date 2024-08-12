@@ -152,7 +152,7 @@ if __name__ == '__main__':
                                          target=opt.target)
 
                 # density_bitfield_tmp = copy.deepcopy(trainer_qat.model.density_bitfield)
-                loss_val_q, _ = trainer_qat.evaluate(valid_loader, name='PTQ')
+                loss_val_q, result, sample_points_per_image_ave = trainer_qat.evaluate(valid_loader, name='PTQ')
                 # print(f'PTQ MSE degradation: {loss_val_q-loss_val_fp}')
 
                 # ======= Quantization 3: Fine-tuning =======
@@ -161,9 +161,12 @@ if __name__ == '__main__':
                 qat(trainer_qat, train_loader, valid_loader, qat_epoch)
 
                 # trainer_qat.model.density_bitfield = density_bitfield_tmp
-                quan_analysis2(model, workspace=opt.workspace, filename="qat_result")
-                if qat_epoch % trainer_qat.eval_interval:
-                    loss_val_q, _ = trainer_qat.evaluate(valid_loader, name='qat with quan. learning')
+
+                # # Save quantification status, Evaluate on the Val dataset, Cal and Save BitOps for each image 
+                quan_analysis2(model, workspace=opt.workspace, filename="qat_result", valid_loader=valid_loader, trainer_qat=trainer_qat)
+                
+                # if qat_epoch % trainer_qat.eval_interval:
+                #     loss_val_q, _ = trainer_qat.evaluate(valid_loader, name='qat with quan. learning')
                     # print(f'QAT MSE degradation: {loss_val_q - loss_val_fp}')
                 # loss_val_q, _ = trainer_qat.evaluate(valid_loader, name='qat with quan. learning')
                 # print(f'QAT MSE degradation: {loss_val_q - loss_val_fp}')

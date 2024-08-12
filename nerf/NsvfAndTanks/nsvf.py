@@ -17,7 +17,7 @@ Copyright (c) 2022 Ruilong Li, UC Berkeley.
 import collections
 import json
 import os
-
+from tqdm import tqdm
 import imageio.v2 as imageio
 import numpy as np
 import torch
@@ -54,8 +54,8 @@ def _load_renderings(root_fp: str, subject_id: str, split: str):
 
     images = []
     camtoworlds = []
-
-    for i in range(len(img_files)):
+    print('dataset loading...')
+    for i in tqdm(range(len(img_files))):
         images.append(imageio.imread(img_files[i]))
         camtoworlds.append(np.loadtxt(pose_files[i]))
 

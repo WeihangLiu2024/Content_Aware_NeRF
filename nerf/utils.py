@@ -1626,7 +1626,7 @@ class QatTrainer(object):
         #     loss_bit = torch.exp(-diff) - 1 + diff + penalty
         loss_bit = diff + self.weight_wrt_loss * penalty
 
-        return pred_rgb, pred_depth, gt_rgb, loss, loss_bit
+        return pred_rgb, pred_depth, gt_rgb, loss, loss_bit, outputs
 
     # moved out bg_color and perturb for more flexible control...
     def test_step(self, data, bg_color=None, perturb=False, shading='full'):
@@ -1699,9 +1699,9 @@ class QatTrainer(object):
 
     def evaluate(self, loader, name=None):
         self.use_tensorboardX, use_tensorboardX = False, self.use_tensorboardX
-        loss_val, result = self.evaluate_one_epoch(loader, name)
+        loss_val, result, sample_points_per_image_ave = self.evaluate_one_epoch(loader, name)
         self.use_tensorboardX = use_tensorboardX
-        return loss_val, result
+        return loss_val, result, sample_points_per_image_ave
 
     def test(self, loader, save_path=None, name=None, write_video=True):
 
@@ -2035,11 +2035,12 @@ class QatTrainer(object):
         with torch.no_grad():
             self.local_step = 0
             loss_record = []
+            num_sample_points_per_image_list = []
             for data in loader:
                 self.local_step += 1
 
-                preds, preds_depth, truths, loss, loss_bit = self.eval_step(data)
-
+                preds, preds_depth, truths, loss, loss_bit, outputs = self.eval_step(data)
+                
                 # all_gather/reduce the statistics (NCCL only support all_*)
                 if self.world_size > 1:
                     dist.all_reduce(loss, op=dist.ReduceOp.SUM)
@@ -2066,7 +2067,13 @@ class QatTrainer(object):
                 loss_val = loss_bit.item()
                 loss_record.append(loss_val)
                 total_loss_bit += loss_val
-
+                
+                # cal num sample points for each image
+                n_samples = np.cumsum(outputs['n_step_list'])
+                n_dead = outputs['n_dead']
+                samples_per_image = sum([n_dead[i] * n_samples[i] for i in range(len(n_dead))])
+                num_sample_points_per_image_list.append(samples_per_image)
+                
                 # only rank = 0 will perform evaluation.
                 if self.local_rank == 0:
 
@@ -2128,7 +2135,7 @@ class QatTrainer(object):
 
         self.log(f"++> Evaluate epoch {self.epoch} Finished.")
 
-        return average_loss, result
+        return average_loss, result, np.mean(num_sample_points_per_image_list)
 
     def save_checkpoint(self, name=None, full=False, best=False, remove_old=True):
 

@@ -10,3 +10,4 @@ config/GetConfig_test.py
 test_data_loader.ipynb
 test.ipynb
 test_calBitOps.ipynb
+test_image.png
