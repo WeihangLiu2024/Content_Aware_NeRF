@@ -16,7 +16,7 @@ import trimesh
 import torch
 from torch.utils.data import DataLoader
 
-from ..utils import get_rays, create_dodecahedron_cameras, linear_to_srgb
+from ..utils import get_rays, create_dodecahedron_cameras, linear_to_srgb, get_rays2
 
 
 def convert(c2w:torch.tensor):
@@ -98,14 +98,24 @@ class NeRFDataset:
         
         self.images = loader.images
         self.poses = loader.camtoworlds
+        if self.opt.data_format == 'nerf':
+            scale = 0.8
+        elif self.opt.data_format == 'nsvf':
+            scale = 1.0
+        elif self.opt.data_format == 'tank':
+            scale = 1.0
+        else:
+            scale = 1.0
         for i in range(self.poses.shape[0]):
             pose = self.poses[i]
-            pose[:3, 3] = pose[:3, 3] * 0.8 + torch.tensor([0, 0, 0]).to('cuda')
+            pose[:3, 3] = pose[:3, 3] * scale + torch.tensor([0, 0, 0]).to('cuda')
             pose = convert(pose)
             self.poses[i] = pose
         self.focal = loader.focal
         self.H = loader.HEIGHT
         self.W = loader.WIDTH
+        self.K = loader.K
+        self.OPENGL_CAMERA = loader.OPENGL_CAMERA
         cx = self.W / 2.0
         cy = self.H / 2.0
         fl_x = self.focal
@@ -154,7 +164,7 @@ class NeRFDataset:
         poses = self.poses[index].to(self.device) # [N, 4, 4]
         # images = self.images[index].to(self.device)  # [B, H, W, 3/4]
         # rays = get_rays(poses, self.intrinsics, self.H, self.W, num_rays, image=images)
-        rays = get_rays(poses, self.intrinsics, self.H, self.W, num_rays)
+        rays = get_rays2(poses, self.intrinsics, self.H, self.W, self.K, self.OPENGL_CAMERA, num_rays)
         results['rays_o'] = rays['rays_o']
         results['rays_d'] = rays['rays_d']
         results['index'] = index

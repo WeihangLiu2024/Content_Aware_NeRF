@@ -204,6 +204,120 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, coords=None, image=Non
     return results
 
 
+@torch.cuda.amp.autocast(enabled=False)
+def get_rays2(poses, intrinsics, H, W, K, OPENGL_CAMERA, N=-1, patch_size=1, coords=None, image=None):
+    ''' get rays
+    Args:
+        poses: [N/1, 4, 4], cam2world
+        intrinsics: [N/1, 4] tensor or [4] ndarray
+        H, W, N: int
+    Returns:
+        rays_o, rays_d: [N, 3]
+        i, j: [N]
+    '''
+
+    device = poses.device
+    
+    if isinstance(intrinsics, np.ndarray):
+        fx, fy, cx, cy = intrinsics
+    else:
+        fx, fy, cx, cy = intrinsics[:, 0], intrinsics[:, 1], intrinsics[:, 2], intrinsics[:, 3]
+
+    i, j = torch.meshgrid(
+                torch.arange(W, device=device),
+                torch.arange(H, device=device),
+                indexing="xy",
+            )
+    i = i.flatten()
+    j = j.flatten()
+
+    results = {}
+
+    if N > 0:
+       
+        if coords is not None:
+            inds = coords[:, 0] * W + coords[:, 1]
+
+        elif patch_size > 1:
+
+            # random sample left-top cores.
+            num_patch = N // (patch_size ** 2)
+            inds_x = torch.randint(0, H - patch_size, size=[num_patch], device=device)
+            inds_y = torch.randint(0, W - patch_size, size=[num_patch], device=device)
+            inds = torch.stack([inds_x, inds_y], dim=-1) # [np, 2]
+
+            # create meshgrid for each patch
+            pi, pj = custom_meshgrid(torch.arange(patch_size, device=device), torch.arange(patch_size, device=device))
+            offsets = torch.stack([pi.reshape(-1), pj.reshape(-1)], dim=-1) # [p^2, 2]
+
+            inds = inds.unsqueeze(1) + offsets.unsqueeze(0) # [np, p^2, 2]
+            inds = inds.view(-1, 2) # [N, 2]
+            inds = inds[:, 0] * W + inds[:, 1] # [N], flatten
+
+
+        else: # random sampling
+            # inds = torch.randint(0, H*W, size=[N], device=device) # may duplicate
+            if image is None:  # no input image used as ray selection reference.
+                inds = torch.randint(0, H * W, size=[N], device=device)  # may duplicate
+            else:
+                # for synthetic dataset, valid pixel is the priority selection
+                images = image[..., :3].view(1, -1, 3)
+                inds_valid = torch.nonzero(torch.all(images != 0, dim=2))  # [B, N]
+                # TODO: only B = 1 is considered here.
+                inds_valid = inds_valid[:, 1]
+
+                weights = torch.ones(H * W, dtype=torch.float32, device=device)
+                weights[inds_valid] = 2.0
+                inds = torch.multinomial(weights, N, replacement=False)
+
+        i = torch.gather(i, -1, inds)
+        j = torch.gather(j, -1, inds)
+
+        results['i'] = i.long()
+        results['j'] = j.long()
+
+    else:
+        inds = torch.arange(H*W, device=device)
+
+    # zs = -torch.ones_like(i) # z is flipped
+    # xs = (i - cx) / fx
+    # ys = -(j - cy) / fy # y is flipped
+    # directions = torch.stack((xs, ys, zs), dim=-1) # [N, 3]
+    # # do not normalize to get actual depth, ref: https://github.com/dunbar12138/DSNeRF/issues/29
+    # # directions = directions / torch.norm(directions, dim=-1, keepdim=True) 
+    # rays_d = (directions.unsqueeze(1) @ poses[:, :3, :3].transpose(-1, -2)).squeeze(1) # [N, 1, 3] @ [N, 3, 3] --> [N, 1, 3] c2w
+
+    # rays_o = poses[:, :3, 3].expand_as(rays_d) # [N, 3]; T represent the movements of camera center w.r.t. origin
+
+    x = i
+    y = j
+    camera_dirs = F.pad(
+            torch.stack(
+                [
+                    (x - K[0, 2] + 0.5) / K[0, 0],
+                    (y - K[1, 2] + 0.5)
+                    / K[1, 1]
+                    * (-1.0 if OPENGL_CAMERA else 1.0),
+                ],
+                dim=-1,
+            ),
+            (0, 1),
+            value=(-1.0 if OPENGL_CAMERA else 1.0),
+        )  # [num_rays, 3]
+    c2w = poses
+    directions = (camera_dirs[:, None, :] * c2w[:, :3, :3]).sum(dim=-1)
+    origins = torch.broadcast_to(c2w[:, :3, -1], directions.shape)
+    viewdirs = directions / torch.linalg.norm(
+            directions, dim=-1, keepdims=True
+        )
+    results['rays_o'] = origins
+    results['rays_d'] = viewdirs
+
+    # visualize_rays(rays_o[0].detach().cpu().numpy(), rays_d[0].detach().cpu().numpy())
+
+    return results
+
+
 def visualize_rays(rays_o, rays_d):
     
     axes = trimesh.creation.axis(axis_length=4)
