@@ -1,4 +1,4 @@
-set -x
+#set -x
 
 downscale=1
 while [[ "$#" -gt 0 ]]; do
