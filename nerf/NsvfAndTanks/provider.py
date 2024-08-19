@@ -95,7 +95,7 @@ class NeRFDataset:
                 dataset_kwargs=train_dataset_kwargs,
                 device=self.device,
             )
-        
+        self.aabb = loader.aabb
         self.images = loader.images
         self.poses = loader.camtoworlds
         if self.opt.data_format == 'nerf':
@@ -164,6 +164,7 @@ class NeRFDataset:
         poses = self.poses[index].to(self.device) # [N, 4, 4]
         # images = self.images[index].to(self.device)  # [B, H, W, 3/4]
         # rays = get_rays(poses, self.intrinsics, self.H, self.W, num_rays, image=images)
+        # rays = get_rays(poses, self.intrinsics, self.H, self.W, num_rays)
         rays = get_rays2(poses, self.intrinsics, self.H, self.W, self.K, self.OPENGL_CAMERA, num_rays)
         results['rays_o'] = rays['rays_o']
         results['rays_d'] = rays['rays_d']

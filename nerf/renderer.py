@@ -699,7 +699,10 @@ class NeRFRenderer(nn.Module):
                             # world2cam transform (poses is c2w, so we need to transpose it. Another transpose is needed for batched matmul, so the final form is without transpose.)
                             cam_xyzs = cas_world_xyzs - poses[head:tail, :3, 3].unsqueeze(1)
                             cam_xyzs = cam_xyzs @ poses[head:tail, :3, :3] # [S, N, 3]
-                            cam_xyzs[:, :, 2] *= -1 # crucial, camera forward is negative now...
+                            if self.opt.data_format == 'nsvf' or self.opt.data_format == 'tank':
+                                cam_xyzs[:, :, 2] *= 1 # crucial, camera forward is negative now...
+                            else:
+                                cam_xyzs[:, :, 2] *= -1 # crucial, camera forward is negative now...
 
                             if torch.is_tensor(fx):
                                 cx_div_fx = cx[head:tail] / fx[head:tail]

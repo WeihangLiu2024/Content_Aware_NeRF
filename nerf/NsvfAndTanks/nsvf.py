@@ -67,7 +67,7 @@ def _load_renderings(root_fp: str, subject_id: str, split: str):
         focal = float(f.readline().split()[0])
 
     aabb = np.loadtxt(os.path.join(data_dir, "bbox.txt"))[:6]
-    return images, camtoworlds, focal
+    return images, camtoworlds, focal, aabb
 
 
 class SubjectLoader(torch.utils.data.Dataset):
@@ -114,10 +114,10 @@ class SubjectLoader(torch.utils.data.Dataset):
         self.color_bkgd_aug = color_bkgd_aug
         self.batch_over_images = batch_over_images
         if split == "trainval":
-            _images_train, _camtoworlds_train, _focal_train = _load_renderings(
+            _images_train, _camtoworlds_train, _focal_train, aabb = _load_renderings(
                 root_fp, subject_id, "train"
             )
-            _images_val, _camtoworlds_val, _focal_val = _load_renderings(
+            _images_val, _camtoworlds_val, _focal_val, aabb = _load_renderings(
                 root_fp, subject_id, "val"
             )
             self.images = np.concatenate([_images_train, _images_val])
@@ -126,9 +126,10 @@ class SubjectLoader(torch.utils.data.Dataset):
             )
             self.focal = _focal_train
         else:
-            self.images, self.camtoworlds, self.focal = _load_renderings(
+            self.images, self.camtoworlds, self.focal, aabb = _load_renderings(
                 root_fp, subject_id, split
             )
+        self.aabb = aabb
         self.images = torch.from_numpy(self.images).to(torch.uint8)
         self.camtoworlds = torch.from_numpy(self.camtoworlds).to(torch.float32)
         self.K = torch.tensor(
