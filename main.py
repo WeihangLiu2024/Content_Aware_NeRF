@@ -79,7 +79,7 @@ if __name__ == '__main__':
         if not opt.contract and opt.data_format == 'colmap':
             model.update_aabb(train_loader._data.pts_aabb)
         # nsvf and tank dataset contain bbox.txt
-        if opt.data_format == 'nsvf' or opt.data_format == 'tank':
+        if opt.data_format == 'nsvf':
             model.update_aabb(train_loader._data.aabb)
         scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.1 ** min(iter / opt.iters, 1))
 
