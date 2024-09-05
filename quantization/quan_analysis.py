@@ -74,6 +74,7 @@ def calBitOps(model, num_samples_each_image, image_size=(800, 800)):
     color_net_BitOps = 0
     # layer 0
     color_net_BitOps += (sigma_out_dim * color0_dim) * (sigma_out_bit * color0_qw_bit)
+    color_net_BitOps += (dir_dim * color0_dim) * (dir_bit * color0_qw_bit)
     # layer 2
     color_net_BitOps += (color0_dim * color2_dim) * (color1_qo_bit * color2_qw_bit)
     # layer 4
