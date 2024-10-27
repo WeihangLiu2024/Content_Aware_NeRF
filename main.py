@@ -67,10 +67,26 @@ if __name__ == '__main__':
         # optimizer = optim.Adam(model.get_params(opt.lr), eps=1e-15)
         optimizer = lambda param: optim.Adam(params=param, lr=opt.lr, eps=1e-15)
 
+        # scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer,
+        #                                                           lambda iter: 0.1 ** min(iter / opt.iters, 1))
+
         train_loader = NeRFDataset(opt, device=device, type=opt.train_split).dataloader()
         batch_num = len(train_loader)
 
-        max_epoch = np.ceil(opt.iters / len(train_loader)).astype(np.int32)
+        def warmup_lr(step):
+            warmup_step = 0 * len(train_loader)  # 20 epoches
+            search_step = opt.update_hash * len(train_loader)
+            if step < search_step:
+                return 1.0
+            elif step < search_step + warmup_step:
+                actual_step = step - search_step
+                return actual_step / warmup_step  # 从 0 到 1 逐渐增加
+            else:
+                actual_step = step - search_step - warmup_step
+                return 0.1 ** min(actual_step / (opt.iters - warmup_step - search_step), 1)
+        scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_lr)
+
+        max_epoch = np.ceil( opt.iters / len(train_loader)).astype(np.int32) + opt.update_hash
         save_interval = max(1, max_epoch // max(1, opt.save_cnt)) # save ~50 times during the training
         eval_interval = max(1, max_epoch // max(1, opt.eval_cnt))
         print(f'[INFO] max_epoch {max_epoch}, eval every {eval_interval}, save every {save_interval}.')
@@ -78,8 +94,6 @@ if __name__ == '__main__':
         # colmap can estimate a more compact AABB
         if not opt.contract and opt.data_format == 'colmap':
             model.update_aabb(train_loader._data.pts_aabb)
-
-        scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.1 ** min(iter / opt.iters, 1))
 
         trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, optimizer=optimizer,
                           criterion=criterion, ema_decay=0.95, fp16=opt.fp16, lr_scheduler=scheduler,
@@ -102,7 +116,8 @@ if __name__ == '__main__':
             ################################
             loss_val_fp = trainer.evaluate(valid_loader)
             if opt.alpha:
-                trainer.log(f"alpha skip rate:{1 - trainer.model.alpha_complex/trainer.model.alpha_sum}")
+                model.skip_rate = 1 - trainer.model.alpha_complex / trainer.model.alpha_sum
+                trainer.log(f"alpha skip rate:{model.skip_rate}")
 
             # also test
             test_loader = NeRFDataset(opt, device=device, type='test').dataloader()

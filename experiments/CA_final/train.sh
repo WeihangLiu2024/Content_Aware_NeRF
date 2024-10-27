@@ -12,12 +12,13 @@ while [[ "$#" -gt 0 ]]; do
         --downscale) downscale="$2"; shift;;
         --update_hash) update_hash="$2"; shift;;
         --hash_interval) hash_interval="$2";shift;;
+        --time) time="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
 done
 
-time=$(date "+%Y-%m-%d_%H:%M:%S")
+#time=$(date "+%Y-%m-%d_%H:%M:%S")
 
 if [ "$quantization" = "MDL" ]; then
   if [ "$alpha" = "True" ]; then

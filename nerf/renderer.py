@@ -556,6 +556,7 @@ class NeRFRenderer(nn.Module):
             # n_alive_temp = 0
             # n_dead = []
             # n_step_record = [];
+            alpha_sum = torch.zeros(rays_d.shape[0], device=rays_d.device)  # only used for analysis
             while step < self.opt.max_steps:
 
                 # count alive rays 
@@ -582,17 +583,23 @@ class NeRFRenderer(nn.Module):
                 dirs = dirs / torch.norm(dirs, dim=-1, keepdim=True)
                 with torch.cuda.amp.autocast(enabled=self.opt.fp16):
                     outputs = self(xyzs, dirs, shading=shading)
+                    alpha = outputs['alpha'].view(n_alive, n_step)
                     sigmas = outputs['sigma']
                     rgbs = outputs['color']
 
                 raymarching.composite_rays(n_alive, n_step, rays_alive, rays_t, sigmas, rgbs, ts, weights_sum,
                                            depth, image, self.opt.T_thresh)
+                alpha_sum[rays_alive] += torch.nan_to_num(alpha, nan=0).sum(dim=1)
 
                 rays_alive = rays_alive[rays_alive >= 0]
 
                 # print(f'step = {step}, n_step = {n_step}, n_alive = {n_alive}, xyzs: {xyzs.shape}')
 
                 step += n_step
+
+            # out_color_image = alpha_sum.view(800, 800).cpu().numpy()
+            # from scipy.io import savemat
+            # savemat('uncertainty_ship.mat', {'uncertainty_ship': out_color_image})
 
         image = image + (1 - weights_sum).unsqueeze(-1) * bg_color
         

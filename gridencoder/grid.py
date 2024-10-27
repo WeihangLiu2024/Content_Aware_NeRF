@@ -298,9 +298,10 @@ class GridEncoder(nn.Module):
         offsets = []
         offset = 0
         # self.log2_hashmap_size = self.log2_hashmap_size - 1 + (self.log2_hashmap_size-12) / 8
-        # self.max_params = round(2 ** self.log2_hashmap_size)
-        self.log2_hashmap_size = self.log2_hashmap_size - 1
-        self.max_params = 2 ** self.log2_hashmap_size
+        self.log2_hashmap_size = self.log2_hashmap_size - 2 * (1 - (self.log2_hashmap_size - 12) / 8)
+        self.max_params = round(2 ** self.log2_hashmap_size)
+        # self.log2_hashmap_size = self.log2_hashmap_size - 1
+        # self.max_params = 2 ** self.log2_hashmap_size
         for i in range(self.num_levels):
             resolution = int(np.ceil(self.base_resolution * self.per_level_scale ** i))
             max_params_in_level = resolution ** self.input_dim

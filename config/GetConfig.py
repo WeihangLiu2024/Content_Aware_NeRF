@@ -32,7 +32,7 @@ def get_config():
                         help="randomly sample rays from all images per step in training")
     parser.add_argument('--downscale', type=int, default=1, help="downscale training images")
     parser.add_argument('--selfbound', action='store_true', help="self-defined bound")
-    parser.add_argument('--bound', type=float, default=2,
+    parser.add_argument('--bound', type=float, default=1,
                         help="assume the scene is bounded in box[-bound, bound]^3, if > 1, will invoke adaptive ray marching.")
     parser.add_argument('--scale', type=float, default=-1,
                         help="scale camera location into box[-bound, bound]^3, -1 means automatically determine based on camera poses..")
@@ -109,7 +109,7 @@ def get_config():
     parser.add_argument('--qat_iteration', type=int, default=2000, help="QAT epoch, typlicall 10-20 epochs")
     parser.add_argument('--qat_lr', type=float, default=1e-2, help="QAT learning rate decay (1e-2 for MDL; 1e-1 for MBL)")
     parser.add_argument('--weight_penalty', type=float, default=1e-3, help="bit width penalty")
-    parser.add_argument('--target', type=float, default=None, help="target PSNR in training set[dB]")
+    parser.add_argument('--target', type=float, default=35, help="target PSNR in training set[dB]")
     parser.add_argument('--lr_schedule', type=int, default=2000, help="beginning iteration of lr decay")
 
     ### ablation setting
@@ -118,7 +118,7 @@ def get_config():
     parser.add_argument('--bit_set', type=float, nargs=15, help="only valid when opt.T1 = True")
 
     ### hash table size scalable settings
-    parser.add_argument('--log2_hashmap_size', type=int, default=19, help="max hash table size for each level")  # initial hash table size
+    parser.add_argument('--log2_hashmap_size', type=float, default=19, help="max hash table size for each level")  # initial hash table size
     parser.add_argument('--update_hash', type=int, default=100, help="update hash table size at the initial xxx epoches")
     parser.add_argument('--hash_interval', type=int, default=10, help="update every xxx epoches")
     parser.add_argument('--save_grad', action='store_true', help="save gradients locally for hash table every <hash_interval> epoches")
@@ -146,7 +146,8 @@ def get_config():
 
     if opt.MGL:
         opt.quantization = True
-        opt.bit_width = 8
+        if opt.bit_width is None:
+            opt.bit_width = 8
         opt.qat_iteration = 3000
         opt.qat_lr = 1e-1
         # opt.qat_lr = 1e-2
@@ -158,7 +159,8 @@ def get_config():
 
     if opt.MDL:
         opt.quantization = True
-        opt.bit_width = 8
+        if opt.bit_width is None:
+            opt.bit_width = 8
         opt.qat_iteration = 3000
         # opt.qat_iteration = 1000
         opt.qat_lr = 1e-2

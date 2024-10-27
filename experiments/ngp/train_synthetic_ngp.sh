@@ -7,7 +7,7 @@
 # 4) uncertainty
 #set -x
 
-exp_name='NGP_2layer'
+exp_name='NGP'
 data_format='nerf'
 downscale=1
 log2_hashmap_size=19

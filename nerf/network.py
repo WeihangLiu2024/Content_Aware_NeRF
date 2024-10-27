@@ -76,11 +76,12 @@ class NeRFNetwork(NeRFRenderer):
         #
         # # ======= alpha statistical =======
         if self.alpha:
-            self.target = 35 # [dB]
+            self.target = opt.target # [dB]
             self.uncertainty_metric = 0.5 * 10 ** (-1 * self.target / 10)
             self.alpha_sum = 0
             self.alpha_complex = 0  # number of simple points
         else:
+            self.skip_rate = 0
             self.uncertainty_metric = 0
 
         # proposal network  (??? Weihang Liu)
@@ -123,13 +124,6 @@ class NeRFNetwork(NeRFRenderer):
             h = self.color_net[0](h_in)
             alpha = self.uncertainty_net(h_in)  # uncertainty
             alpha = torch.sigmoid(alpha) # when this value is low, it means the point is quite simple and the further calculation is redundant
-
-            # # complex point processing
-            # for l in range(1, len(self.color_net) - 1):
-            #     h = self.color_net[l](h)
-            # # final blend
-            # h_new = alpha * h + (1 - alpha) * h_res
-            # h = self.color_net[-1](h_new)
 
             if self.training and kwargs["step"] < 10000:
             # if False: # debug

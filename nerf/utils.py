@@ -787,7 +787,7 @@ class Trainer(object):
 
             # ========== hash table operation ==========
             # save hash grad as reference
-            if (epoch < self.opt.update_hash) and ((epoch + 1) % self.opt.hash_interval == 0):
+            if (self.epoch < self.opt.update_hash) and ((epoch + 1) % self.opt.hash_interval == 0):
                 # average over iterations
                 tensor_hash_mean = torch.mean(torch.stack(self.hash_grad))
                 # self.log(f'average hash gradient over grids and iterations in one epoch: {tensor_hash_mean}')
@@ -813,6 +813,12 @@ class Trainer(object):
                 # self.optimizer.param_groups[0]['params'] = self.model.encoder.embeddings
 
                 self.hash_grad = []
+
+            elif self.epoch == self.opt.update_hash:  # re-initialize hash table after find the suitable size
+                self.model.encoder.reset_parameters()
+                # std = 1e-4
+                # for params in self.model.parameters():
+                #     params.data.uniform_(-std, std)
 
             if (self.epoch % self.save_interval == 0 or self.epoch == max_epochs) and self.workspace is not None and self.local_rank == 0:
                 self.save_checkpoint(full=True, best=False)
@@ -1027,6 +1033,11 @@ class Trainer(object):
 
         self.local_step = 0
 
+        # visualization only for paper writing
+        # record_epoch = 300
+        # if epoch_index==record_epoch:
+        #     grad_sum = torch.zeros_like(self.hash_table)
+
         for data in loader:
             
             # update grid every 16 steps
@@ -1062,11 +1073,15 @@ class Trainer(object):
 
             # record hash grad every xxx epoch
             # self.hash_grad.append(self.hash_table.grad.detach().clone())
-            if (epoch_index < self.opt.update_hash) and ((epoch_index+1) % self.opt.hash_interval == 0):
+            # if ( (epoch_index < self.opt.update_hash) and ((epoch_index+1) % self.opt.hash_interval == 0) ) or (epoch_index==record_epoch):  # epoch 300 only used for visualization in paper writing
+            if (epoch_index < self.opt.update_hash) and ((epoch_index + 1) % self.opt.hash_interval == 0):
                 # self.hash_grad.append(self.hash_table.grad)
                 nonzero_indices = torch.nonzero(self.hash_table.grad)
 
-                # choice 1: average over points
+                # if epoch_index == record_epoch:
+                #     grad_sum += torch.abs(self.hash_table.grad)
+
+                # choice 1: average over sampled points
                 # abs_mean = torch.abs(self.hash_table.grad[nonzero_indices[:, 0], nonzero_indices[:, 1]]).sum() / num_points
                 # choice 2: average over all hash table
                 dim = self.model.encoder.embeddings.shape
@@ -1098,6 +1113,11 @@ class Trainer(object):
                 else:
                     pbar.set_description(f"loss={loss_val:.6f} ({total_loss/self.local_step:.6f})")
                 pbar.update(loader.batch_size)
+
+        # if epoch_index==record_epoch:
+        #     from scipy.io import savemat
+        #     numpy_array = grad_sum.cpu().numpy()
+        #     savemat(f'grad_sum_{epoch_index}.mat', {f'grad_sum_{epoch_index}': numpy_array})
 
         if self.ema is not None:
             self.ema.update()
@@ -1437,14 +1457,17 @@ class QatTrainer(object):
         self.weight_wrt_loss = weight_wrt_loss
         self.console = Console()
         self.loss_fp = loss_fp
-        if target is not None:
-            self.target = target
-            loss_metric = 0.5 * 10 ** (-1 * self.target / 10)  # multiply 0.5 due to SmoothL1Loss
-            if self.loss_fp is not None:  # the evaluation result is a valid value
-                self.loss_metric = max(loss_metric, self.loss_fp)
-        else:
-            assert (loss_fp is not None), "one of target PSNR or previous loss should be provided"
+        if opt.MDL:
             self.loss_metric = self.loss_fp
+        else:
+            if target is not None:
+                self.target = target
+                loss_metric = 0.5 * 10 ** (-1 * self.target / 10)  # multiply 0.5 due to SmoothL1Loss
+                if self.loss_fp is not None:  # the evaluation result is a valid value
+                    self.loss_metric = max(loss_metric, self.loss_fp)
+            else:
+                assert (loss_fp is not None), "one of target PSNR or previous loss should be provided"
+                self.loss_metric = self.loss_fp
 
         # try out torch 2.0
         if torch.__version__[0] == '2':
