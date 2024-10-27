@@ -9,6 +9,8 @@ def get_config():
     parser.add_argument('-O2', action='store_true', help="recommended settings")
     parser.add_argument('-MGL', action='store_true', help="recommended Metric-Guided Learning")
     parser.add_argument('-MDL', action='store_true', help="recommended Minimal Degradation Learning")
+
+    ###
     parser.add_argument('--workspace', type=str, default='workspace')
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--ckpt', type=str, default='latest')
@@ -125,7 +127,7 @@ def get_config():
         opt.preload = True
         opt.cuda_ray = True
         opt.mark_untrained = True
-        opt.adaptive_num_rays = True
+        opt.adaptive_num_rays = False
         opt.random_image_batch = False  # TODO: make it compatibility to object-nerf ray selection (avoid ray of free space)
 
     if opt.O2:
@@ -161,7 +163,6 @@ def get_config():
         opt.mark_untrained = False
 
     if opt.data_format == 'colmap':  # default setting
-        opt.enable_cam_near_far = True
         opt.background = 'random'
         opt.enable_cam_center = True
         if not opt.selfbound:

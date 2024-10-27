@@ -951,10 +951,18 @@ class NeRFRenderer(nn.Module):
 
             step = 0
 
+            n_alive_temp = 0
+            n_dead = []
+            n_step_list = []
+
             while step < self.opt.max_steps:
 
                 # count alive rays
                 n_alive = rays_alive.shape[0]
+
+                if n_alive_temp:
+                    n_dead.append(n_alive_temp - n_alive)
+                n_alive_temp = n_alive
 
                 # exit loop
                 if n_alive <= 0:
@@ -962,6 +970,7 @@ class NeRFRenderer(nn.Module):
 
                 # decide compact_steps
                 n_step = max(min(N // n_alive, 8), 1)
+                n_step_list.append(n_step)
 
                 xyzs, dirs, ts = raymarching.march_rays(n_alive, n_step, rays_alive, rays_t, rays_o, rays_d,
                                                         self.real_bound, self.opt.contract, self.density_bitfield,
@@ -987,7 +996,8 @@ class NeRFRenderer(nn.Module):
                 # print(f'step = {step}, n_step = {n_step}, n_alive = {n_alive}, xyzs: {xyzs.shape}')
 
                 step += n_step
-
+            results['n_dead'] = n_dead
+            results['n_step_list'] =n_step_list
         image = image + (1 - weights_sum).unsqueeze(-1) * bg_color
 
         results['depth'] = depth

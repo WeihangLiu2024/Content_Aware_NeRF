@@ -8,8 +8,6 @@ import warnings
 import tensorboardX
 
 import numpy as np
-import scipy.io as io
-# import hdf5storage as io
 
 import time
 
@@ -645,16 +643,7 @@ class Trainer(object):
         for epoch in range(self.epoch + 1, max_epochs + 1):
             self.epoch = epoch
 
-            self.train_one_epoch(train_loader, epoch_index=epoch-1)
-
-            # save hash grad as reference
-            # if (epoch-1) % 10 == 0:
-            #     tensor_hash = torch.stack(self.hash_grad)
-            #     tensor_hash = np.array(tensor_hash)
-            #     io.savemat(f'{self.hash_path}/hash_grad_{epoch}.mat',
-            #                {'hash_grad_iter1':tensor_hash[0], 'hash_grad_epoch':np.sum(abs(tensor_hash), axis=0)} )
-            #
-            # self.hash_grad = []
+            self.train_one_epoch(train_loader)
 
             if (self.epoch % self.save_interval == 0 or self.epoch == max_epochs) and self.workspace is not None and self.local_rank == 0:
                 self.save_checkpoint(full=True, best=False)
@@ -843,7 +832,7 @@ class Trainer(object):
 
         return outputs
 
-    def train_one_epoch(self, loader, epoch_index):
+    def train_one_epoch(self, loader):
 
         self.log(f"==> Start Training Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")
 
@@ -882,11 +871,6 @@ class Trainer(object):
             self.scaler.scale(loss).backward()
 
             self.post_train_step() # for TV loss...
-
-            # record hash grad every 50 epoch
-            # self.hash_grad.append(self.hash_table.grad.detach().clone())
-            # if epoch_index % 10 == 0:
-            #     self.hash_grad.append(self.hash_table.grad.cpu())
 
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -1241,7 +1225,7 @@ class QatTrainer(object):
         self.loss_fp = loss_fp
         if target is not None:
             self.target = target
-            loss_metric = 10 ** (-1 * self.target / 10)
+            loss_metric = 0.5 * 10 ** (-1 * self.target / 10)
             if self.loss_fp != 0:  # the evaluation result is a valid value
                 self.loss_metric = max(loss_metric, self.loss_fp)
         else:
@@ -1262,8 +1246,6 @@ class QatTrainer(object):
         self.param_qat = []
         self.param_range = []
         self.param_bit = []
-
-        # classify trainable parameters into different groups.
         for name, param in self.model.named_parameters():
             if 'soft_bit' in name:
                 self.param_bit.append(param)
@@ -1273,7 +1255,6 @@ class QatTrainer(object):
             else:
                 self.param_qat.append(param)
             # print(name, param.shape)
-
         self.metrics = metrics
         self.fp16 = fp16
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.fp16)
@@ -1542,7 +1523,7 @@ class QatTrainer(object):
         #     loss_bit = torch.exp(-diff) - 1 + diff + penalty
         loss_bit = diff + self.weight_wrt_loss * penalty
 
-        return pred_rgb, pred_depth, gt_rgb, loss, loss_bit
+        return pred_rgb, pred_depth, gt_rgb, loss, loss_bit, outputs
 
     # moved out bg_color and perturb for more flexible control...
     def test_step(self, data, bg_color=None, perturb=False, shading='full'):
@@ -1615,9 +1596,9 @@ class QatTrainer(object):
 
     def evaluate(self, loader, name=None):
         self.use_tensorboardX, use_tensorboardX = False, self.use_tensorboardX
-        loss_val, result = self.evaluate_one_epoch(loader, name)
+        loss_val, result, sample_points_per_image_ave = self.evaluate_one_epoch(loader, name)
         self.use_tensorboardX = use_tensorboardX
-        return loss_val, result
+        return loss_val, result, sample_points_per_image_ave
 
     def test(self, loader, save_path=None, name=None, write_video=True):
 
@@ -1951,10 +1932,11 @@ class QatTrainer(object):
         with torch.no_grad():
             self.local_step = 0
             loss_record = []
+            num_sample_points_per_image_list = []
             for data in loader:
                 self.local_step += 1
 
-                preds, preds_depth, truths, loss, loss_bit = self.eval_step(data)
+                preds, preds_depth, truths, loss, loss_bit, outputs = self.eval_step(data)
 
                 # all_gather/reduce the statistics (NCCL only support all_*)
                 if self.world_size > 1:
@@ -1982,6 +1964,12 @@ class QatTrainer(object):
                 loss_val = loss_bit.item()
                 loss_record.append(loss_val)
                 total_loss_bit += loss_val
+
+                # cal num sample points for each image
+                n_samples = np.cumsum(outputs['n_step_list'])
+                n_dead = outputs['n_dead']
+                samples_per_image = sum([n_dead[i] * n_samples[i] for i in range(len(n_dead))])
+                num_sample_points_per_image_list.append(samples_per_image)
 
                 # only rank = 0 will perform evaluation.
                 if self.local_rank == 0:
@@ -2044,7 +2032,7 @@ class QatTrainer(object):
 
         self.log(f"++> Evaluate epoch {self.epoch} Finished.")
 
-        return average_loss, result
+        return average_loss, result, np.mean(num_sample_points_per_image_list)
 
     def save_checkpoint(self, name=None, full=False, best=False, remove_old=True):
 

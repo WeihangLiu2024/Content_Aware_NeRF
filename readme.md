@@ -1,6 +1,6 @@
 # A-CAQ for radiance field
 
-This is the reference code for paper "Content-Aware Radiance Fields: Aligning Model Complexity with Scene Intricacy Through Learned Bitwidth Quantization" submitted to ECCV 2024
+This is the reference code for paper "Content-Aware Radiance Fields: Aligning Model Complexity with Scene Intricacy Through Learned Bitwidth Quantization" accepted by ECCV 2024
 
 Supported public datasets should be initially downloaded from the internet
 

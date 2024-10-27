@@ -1,5 +1,122 @@
 import os
 
+def calBitOps_CAQ(
+        model,
+        num_samples_each_image,
+        hash_size,
+        skip_rate=0,
+        image_size=(800, 800),
+):
+    """
+    Only counting multiplication
+    """
+    model_size = 0
+
+    bitset = []
+    for name, module in model.named_modules():
+        if ('qo' in name) or ('qi' in name) or ('qw' in name):
+            bitset.append(module.hard_bit)
+    T = 1e12
+    MB = 1024 * 1024 * 8
+    # sum = 0
+    ray_num = image_size[0] * image_size[1]
+    # per_ray_bitOps = 0  # 每条光线需要的bitops
+    per_point_bitOps = 0  # 每个采样点需要的bitops
+
+    # (1)------Interpolation------
+    # ------Trilinear Interpolation------
+    encoder = model.qencoder
+    L = encoder.encoder.num_levels
+    F = encoder.encoder.level_dim
+    hash_bit = bitset[1]
+    cord_bit = 32
+    TriInterOps = 0
+    TriInterOps += 3 * cord_bit * cord_bit
+    TriInterOps += L * F * ((4 + 8) * cord_bit * cord_bit + 8 * cord_bit * hash_bit)
+    per_point_bitOps += TriInterOps
+    # print('TriInterOps per point:',TriInterOps)
+    model_size += hash_bit * hash_size
+
+    # # (1-2)------Bilinear Interpolation------
+    # L = 4
+    # F = 2
+    # hash_bit = 1
+    # cord_bit = 32
+    # BiInterOps = 0
+    # BiInterOps += 2 * cord_bit * cord_bit
+    # BiInterOps += L * F * ((2 + 4) * cord_bit * cord_bit + 4 * cord_bit * hash_bit)
+    # per_point_bitOps += BiInterOps * 3
+    # # print('BiInterOps per point:',BiInterOps)
+
+    # (2)------SigmaNet------
+    encoder_qo_bit = bitset[0]
+    sigmanet0_qw_bit = bitset[3]
+    sigmanet1_q0_bit = bitset[4]
+    sigmanet2_qw_bit = bitset[6]
+    sigma_in_dim = 32
+    sigma0_dim = 64
+    sigma2_dim = 16
+    sigma_net_BitOps = 0
+    # layer 0
+    sigma_net_BitOps += (sigma_in_dim * sigma0_dim) * (encoder_qo_bit * sigmanet0_qw_bit)
+    # layer 2
+    sigma_net_BitOps += (sigma0_dim * sigma2_dim) * (sigmanet1_q0_bit * sigmanet2_qw_bit)
+    per_point_bitOps += sigma_net_BitOps
+    # print('sigma_net_BitOps per point:',sigma_net_BitOps)
+    model_size += sigma_in_dim * sigma0_dim * sigmanet0_qw_bit + \
+                  sigma0_dim * sigma2_dim * sigmanet2_qw_bit
+
+    # (3)------ColorNet------
+    # ColorNet：
+    sigma_out_bit = bitset[5]
+    dir_bit = bitset[7]
+    color0_qw_bit = bitset[10]
+    color1_qo_bit = bitset[11]
+    color2_qw_bit = bitset[12]
+    color3_qo_bit = bitset[13]
+    color4_qw_bit = bitset[14]
+    color_act_in = bitset[8]
+
+    sigma_out_dim = 15
+    dir_dim = 16
+    color0_dim = 64
+    color2_dim = 64
+    color4_dim = 3
+
+    color_net_BitOps = 0
+    # layer 0
+    color_net_BitOps += (sigma_out_dim * color0_dim) * (sigma_out_bit * color0_qw_bit) + \
+                        dir_dim * color0_dim * dir_bit * color0_qw_bit
+
+    # layer 2
+    color_net_BitOps += (1-skip_rate) * (color0_dim * color2_dim) * (color1_qo_bit * color2_qw_bit)
+    # layer 4
+    color_net_BitOps += (color2_dim * color4_dim) * (color3_qo_bit * color4_qw_bit)
+    # color activation
+    color_net_BitOps += 3 * color_act_in
+    per_point_bitOps += color_net_BitOps
+    # print('color_net_BitOps per point:',color_net_BitOps)
+    model_size += (sigma_out_dim + dir_dim) * color0_dim * color0_qw_bit + \
+                  color0_dim * color2_dim * color2_qw_bit + \
+                  color2_dim * color4_dim * color4_qw_bit
+
+    # (4)------volume rendering------
+    sigma_bit = bitset[2]
+    color_bit = bitset[9]
+    volRenderOps = 0
+    num_samples_per_ray = num_samples_each_image / ray_num
+    # print('samples per ray:',num_samples_per_ray)
+    volRenderOps += sigma_bit**2 * num_samples_per_ray * (num_samples_per_ray - 1) / 2
+    volRenderOps += num_samples_per_ray * sigma_bit * color_bit
+    # print('volRenderOps per ray:',volRenderOps)
+
+    # ------Sum------
+    per_ray_bitOps = per_point_bitOps * num_samples_per_ray + volRenderOps
+    sum = per_ray_bitOps * ray_num
+    # print('bitOps per image:',sum / T, 'T')
+    return sum / T, model_size / MB
+
+
 def quan_analysis(model):
     print(model)
     print('\n Quantization Results: \n')
@@ -81,6 +198,19 @@ def quan_analysis2(model, workspace=None, filename=None):
         for name, module in model.named_modules():
             if ('qo' in name) or ('qi' in name) or ('qw' in name):
                 log_ptr.write(f"{name}: {module}\n")
+
+    # 计算渲染一张图像的BitOps
+    if trainer_qat is not None and valid_loader is not None:
+        loss_val_q, result, sample_points_per_image_ave = trainer_qat.evaluate(valid_loader,
+                                                                               name='qat with quan. learning')
+        bitops_per_image_caq, model_size_caq = calBitOps_CAQ(model=model,
+                                     num_samples_each_image=sample_points_per_image_ave,
+                                     hash_size = model.encoder.embeddings.shape[0] * model.encoder.embeddings.shape[1],
+                                     image_size=(valid_loader._data.W, valid_loader._data.H))
+        if log_ptr is not None:
+            log_ptr.write(f"loss val: {loss_val_q}\n")
+            log_ptr.write(f"CAQ BitOps for each image (T): {bitops_per_image_caq.item()}\n")
+            log_ptr.write(f"CAQ model size (MB): {model_size_caq.item()}\n")
 
     # 关闭文件对象
     if log_ptr is not None:

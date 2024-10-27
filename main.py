@@ -1,3 +1,11 @@
+import os
+import subprocess
+import numpy as np
+
+cmd = 'nvidia-smi -q -d Memory |grep -A4 GPU|grep Used'
+result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE).stdout.decode().split('\n')
+os.environ['CUDA_VISIBLE_DEVICES']=str(np.argmin([int(x.split()[2]) for x in result[:-1]]))
+
 import torch
 import argparse
 import torch.optim as optim
@@ -142,7 +150,7 @@ if __name__ == '__main__':
                                          target=opt.target)
 
                 # density_bitfield_tmp = copy.deepcopy(trainer_qat.model.density_bitfield)
-                loss_val_q, _ = trainer_qat.evaluate(valid_loader, name='PTQ')
+                loss_val_q, _, _ = trainer_qat.evaluate(valid_loader, name='PTQ')
                 # print(f'PTQ MSE degradation: {loss_val_q-loss_val_fp}')
 
                 # ======= Quantization 3: Fine-tuning =======
@@ -151,7 +159,7 @@ if __name__ == '__main__':
                 qat(trainer_qat, train_loader, valid_loader, qat_epoch)
 
                 # trainer_qat.model.density_bitfield = density_bitfield_tmp
-                quan_analysis2(model, workspace=opt.workspace, filename="qat_result")
+                quan_analysis2(model, workspace=opt.workspace, filename="qat_result", valid_loader=valid_loader, trainer_qat=trainer_qat)
                 if qat_epoch % trainer_qat.eval_interval:
                     loss_val_q, _ = trainer_qat.evaluate(valid_loader, name='qat with quan. learning')
                     # print(f'QAT MSE degradation: {loss_val_q - loss_val_fp}')

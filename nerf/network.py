@@ -18,7 +18,7 @@ class NeRFNetwork(NeRFRenderer):
         super().__init__(opt)
 
         # ======== position encoder ========
-        self.encoder, self.in_dim = get_encoder(encoding="hashgrid", desired_resolution=2048 * self.bound, log2_hashmap_size=opt.log2_hashmap_size)
+        self.encoder, self.in_dim = get_encoder(encoding="hashgrid", desired_resolution=2048 * self.bound)
 
         # ======== sigma network ========
         self.num_layers = num_layers
