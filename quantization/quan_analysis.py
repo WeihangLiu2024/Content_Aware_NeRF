@@ -182,7 +182,7 @@ def quan_analysis(model):
                         f"qo--min({model.qcolor_net.Qcolor_net[4].qo.min}); \n")
 
 
-def quan_analysis2(model, workspace=None, filename=None):
+def quan_analysis2(model, workspace=None, filename=None, valid_loader=None, trainer_qat=None):
     for name, module in model.named_modules():
         if ('qo' in name) or ('qi' in name) or ('qw' in name):
             print(name, module)
