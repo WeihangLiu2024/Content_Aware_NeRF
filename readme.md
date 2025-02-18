@@ -1,7 +1,7 @@
 # A-CAQ for radiance field
 
 
-⭐: Extended Fully Content Aware Framework is submitted to TVCG, codes will be released soon.
+⭐: Extended Fully Content Aware Framework is submitted to TVCG. [Codes](https://github.com/WeihangLiu2024/Content_Aware_NeRF/tree/framework) is now available, see branch "framework".
 
 ⭐: Paper is accepted by ECCV 2024 [ArXiv Link](https://arxiv.org/abs/2410.19483).
 ***
