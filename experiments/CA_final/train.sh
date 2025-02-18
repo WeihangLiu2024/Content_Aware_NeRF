@@ -18,7 +18,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-#time=$(date "+%Y-%m-%d_%H:%M:%S")
+time=$(date "+%Y-%m-%d_%H:%M:%S")
 
 if [ "$quantization" = "MDL" ]; then
   if [ "$alpha" = "True" ]; then

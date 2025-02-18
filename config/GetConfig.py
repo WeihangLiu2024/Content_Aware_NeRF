@@ -45,6 +45,7 @@ def get_config():
     parser.add_argument('--T_thresh', type=float, default=1e-4, help="minimum transmittance to continue ray marching")
 
     ### training options
+    parser.add_argument('--warmup', type=int, default=50, help="warmup epoch")
     parser.add_argument('--iters', type=int, default=30000, help="training iters")
     parser.add_argument('--lr', type=float, default=1e-2, help="initial learning rate")
     parser.add_argument('--cuda_ray', action='store_true', help="use CUDA raymarching instead of pytorch")

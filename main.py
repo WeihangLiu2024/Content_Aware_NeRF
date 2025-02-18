@@ -74,7 +74,7 @@ if __name__ == '__main__':
         batch_num = len(train_loader)
 
         def warmup_lr(step):
-            warmup_step = 0 * len(train_loader)  # 20 epoches
+            warmup_step = opt.warmup * len(train_loader)  # 50 epoches
             search_step = opt.update_hash * len(train_loader)
             if step < search_step:
                 return 1.0
