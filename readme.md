@@ -1,6 +1,11 @@
-# A-CAQ for radiance field
+# CoARF++
 
-This is the reference code for paper "Content-Aware Radiance Fields: Aligning Model Complexity with Scene Intricacy Through Learned Bitwidth Quantization" submitted to ECCV 2024
+
+⭐: Extended Fully Content Aware Framework is submitted to TVCG. [Codes](https://github.com/WeihangLiu2024/Content_Aware_NeRF/tree/framework) is now available, see branch "framework".
+
+⭐: Paper is accepted by ECCV 2024 [ArXiv Link](https://arxiv.org/abs/2410.19483).
+***
+This is the reference code for paper "Content-Aware Radiance Fields: Aligning Model Complexity with Scene Intricacy Through Learned Bitwidth Quantization" 
 
 Supported public datasets should be initially downloaded from the internet
 
